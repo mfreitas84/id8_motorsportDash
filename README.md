@@ -7,6 +7,7 @@ Custom apps for the BMW MGU head unit (iDrive 8), built on the
 | App | What | State |
 |---|---|---|
 | [`mdev_quickstart`](apps/mdev_quickstart) | Plumbing check: live rpm, coolant, oil temperature and speed (polled SOME/IP getters), plus one gated OBD read (intake air temperature from the DME) | v0.1.0, to verify on the car |
+| [`mdev_trackdash`](apps/mdev_trackdash) | Track day: track map with the car's position (record a track once, reuse it), coolant / oil / speed, throttle / brake / steering bars, CSV session log with GPS; Save USB (parked only) | v0.1.0. **GPS source and USB helper still to wire** (see below) |
 
 The project brief (hardware, data paths, safety rule, roadmap) is [CLAUDE.md](CLAUDE.md).
 
@@ -33,6 +34,7 @@ These work without the car and without BMW's SDK. (On macOS use `python3` instea
 
 ```sh
 node tests/test_quickstart.js                                    # safety gate, OBD decoding, poller
+node tests/test_trackdash.js                                     # track recording, position, log, scalings
 python kit/tools/build.py mdev_quickstart --preview-only         # -> dist/mdev_quickstart (not installable)
 node kit/tools/preview.js dist/mdev_quickstart preview wait=20 render     # -> preview/main_gfx-0.png (demo data)
 ```
@@ -108,6 +110,43 @@ Ignition on (engine running for the rpm and temperature values). Open **Apps →
 
 The app's log is `/var/opt/public/oap/oap_<uid>/data/mdev_quickstart.log` (the Store's phone page
 shows logs too). Send back what 3, 4 and 6 show: that decides what the track page can rely on.
+
+## Track Dash (`mdev_trackdash`)
+
+**Header menu:** DASH · TRACKS · REC LOG / STOP LOG · SAVE USB (and Settings). Without the Store's
+renderer the same actions are the HMI's bar buttons.
+
+**Track line: record once, reuse.** At a saved track (found by GPS) the map shows its recorded line and
+the car as a dot. Anywhere else it draws the live trail. After one full lap, *Save lap as track*
+(Tracks page) stores a smoothed, closed line with a start / finish. Tracks live in the app's
+`data/tracks.json`, in **CanBusTrackAnalyser's format** plus `line`, so the two can share tracks. The dot
+moves at 10 Hz between GPS fixes, from speed and yaw rate (`position.js`).
+
+**Log:** REC LOG writes `data/logs/<YYYYMMDD-HHMMSS>.csv` at 10 rows a second, and keeps recording with
+the screen hidden. Columns: `t_iso, t_ms, lat, lon` (smoothed), `gps_lat, gps_lon, gps_age_ms` (the raw
+fix), `heading_deg, speed_kmh, rpm, coolant_c, oil_c, throttle_pct, brake_on, brake_pct, steer_deg,
+g_long, g_lat, yaw_dps, track_id, demo`. The newest 30 sessions are kept.
+
+**Brake:** the car reports "driver braking" (on / off), not pedal travel or pressure. The red bar shows
+how hard from the deceleration (1.3 g = 100 %).
+
+**Not wired yet:**
+- **GPS.** No public app reads a position over SOME/IP. I need your unit's catalog to find the
+  service: copy `/etc/oap/someip/someip-interfaces.json` into `reference/` (command above). Until then
+  the map says *No GPS source yet* on the car; the demo has GPS.
+- **Save USB.** Sticks are mounted read-only, so it needs a small root helper (a Store tool). That
+  needs one SSH look at how sticks mount first. Until then the button says why it can't run.
+
+**What to check on the car (v0.1.0):**
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | Tiles | Coolant, oil, speed live; no DEMO badge |
+| 2 | Throttle bar | Follows the pedal (green). If it stays `--` / `waiting`: the pedal signal doesn't notify on this car |
+| 3 | Brake bar | Goes red when braking. The log line `inputs: statusBrakingDriver raw value ...` shows what the car sends: send it to me |
+| 4 | Steering bar | Turning left fills to the left. If it's mirrored, tell me |
+| 5 | g long / lat | Plausible under braking and in corners |
+| 6 | REC LOG | The REC badge counts up. STOP LOG says how many rows; the file is in `data/logs/` |
 
 ## Safety
 

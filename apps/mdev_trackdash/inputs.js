@@ -1,0 +1,138 @@
+'use strict';
+/**
+ * inputs.js - every live vehicle value the dashboard and the log use, in real units, in one object.
+ *
+ *   const inp = new Inputs(ctx);  await inp.init();
+ *   inp.run(true / false)        // poll while the screen is shown OR a log is recording
+ *   inp.v                        // { rpm, speed, coolant, oil, gLong, gLat, yaw, throttle, steer, braking, fix, fixT }
+ *   inp.at                       // same keys -> ms the value last arrived (0 = never)
+ *   inp.status()                 // per source: 'ok' / 'waiting' / 'none', for the screen and the log
+ *
+ * Two ways in (see apps/mdev_quickstart/poller.js for why polling):
+ *   POLLED getters ("r" in app.json), 10 Hz:   CDS rpm + temperatures, Vehicle2 speed,
+ *                                              CDS2 longitudinal / lateral g and yaw rate
+ *   SUBSCRIBED ("s", the kit's Live Data reads them that way; no getter known yet):
+ *                                              AcceleratorPedal (throttle), SteeringAngle,
+ *                                              DSC StabilizationManagement.statusBrakingDriver (brake on/off)
+ *   If a subscribed one stays silent on the car, the catalog tells whether it has a getter to poll.
+ *
+ * GPS: NO SOURCE YET. No public app reads a position over SOME/IP; the car's own catalog
+ * (reference/someip-interfaces.json) has to show the service. GPS_SOURCE below is where it goes.
+ * Until then fix stays null on the car (the map says so) and the demo provides one.
+ *
+ * Brake: the car gives "driver is braking" (on / off), not pedal travel or pressure. The bar shows
+ * how hard from the deceleration while that flag is on; without the flag it estimates from
+ * deceleration alone and says so. A real pressure source is another catalog question.
+ */
+const { Poller } = require('./poller');
+
+const CDS = 'de.bmw.infotainment.vehicle.CDS';
+const CDS2 = 'de.bmw.infotainment.vehicle.CDS2';
+const V2 = 'de.bmw.infotainment.vehicle.Vehicle2';
+const PEDAL = 'de.bmw.powertrain.AcceleratorPedal';
+const STEER = 'de.bmw.chassis.SteeringAngle';
+const DSC = 'de.bmw.chassis.VehicleStabilizationManagement';
+
+// Where the GPS will come from once the catalog shows it: { iface, field, lat(v), lon(v) }.
+const GPS_SOURCE = null;
+
+// Raw -> real units: BMW's scalings, as the kit's car.js and Live Data use them (README section 7).
+const num = (x) => (typeof x === 'number' && isFinite(x) ? x : null);
+const lin = (raw, k, o, bad) => { const r = num(raw); return r === null || r === bad ? null : r * k + (o || 0); };
+const G0 = 9.80665;
+const SC = {
+    rpm: (v) => lin(v && v.actualValueRPMEngineCrankshaft, 0.25, 0, 65535),
+    speed: (v) => lin(v && v.speedVehicleCentreOfGravity, 0.015625, 0, 65535),
+    coolant: (v) => lin(v && v.temperatureEngineDrive, 1, -48, 255),
+    oil: (v) => lin(v && v.temperatureEngineOilDrive, 1, -48, 255),
+    gLong: (v) => { const a = lin(v && v.longitudinalAccelerationCentreOfGravity, 0.002, -65, 65535); return a === null ? null : a / G0; },
+    gLat: (v) => { const a = lin(v && v.lateralAccelerationCentreOfGravity, 0.002, -65, 65535); return a === null ? null : a / G0; },
+    yaw: (v) => lin(v && v.yawVelocityVehicle, 0.005, -163.84, 65535),
+    throttle: (v) => { const p = lin(v && v.actualValueAngleAcceleratorPedal, 0.025, 0); return p === null || p < -2 || p > 102 ? null : Math.max(0, Math.min(100, p)); },
+    steer: (v) => {
+        let r = num(v && v.actualValueSteeringAngleDriver);
+        if (r === null) return null;
+        if (r >= 32768) r -= 65536;                    // signed 16 bit
+        const d = r * 0.04395;
+        return Math.abs(d) > 900 ? null : d;
+    },
+    // statusBrakingDriver: an enum; the kit's demo sends 1 for braking. Names are logged once (raw below).
+    braking: (v) => {
+        const r = v && v.statusBrakingDriver;
+        if (r === undefined || r === null) return null;
+        if (typeof r === 'number') return r === 1;
+        return /BETAETIGT|ACTIVE|BRAK/i.test(String(r)) && !/NICHT|NOT|INAKTIV/i.test(String(r));
+    },
+};
+
+class Inputs {
+    constructor(ctx) {
+        this.ctx = ctx;
+        this.log = ctx.log;
+        this.v = { rpm: null, speed: null, coolant: null, oil: null, gLong: null, gLat: null, yaw: null,
+            throttle: null, steer: null, braking: null, fix: null, fixT: 0 };
+        this.at = {};
+        Object.keys(this.v).forEach((k) => { this.at[k] = 0; });
+        this.raw = { braking: [] };                    // first few raw brake values seen, for the log
+        this.poller = new Poller(ctx.signals, ctx.log, 100);
+        this.subs = {};
+    }
+
+    _put(k, x) { if (x !== null && x !== undefined) { this.v[k] = x; this.at[k] = Date.now(); } }
+
+    async init() {
+        const P = this.poller, put = (k, f) => (v) => this._put(k, f(v));
+        P.add(CDS, 'statusEngineSpeed2', put('rpm', SC.rpm));
+        P.add(CDS, 'statusEngineTemperature', (v) => { this._put('coolant', SC.coolant(v)); this._put('oil', SC.oil(v)); });
+        P.add(V2, 'statusCarSpeed2', put('speed', SC.speed));
+        P.add(CDS2, 'statusLongitudinalAccelerationMassCenter', put('gLong', SC.gLong));
+        P.add(CDS2, 'statusLateralAccelerationMassCenter', put('gLat', SC.gLat));
+        P.add(CDS2, 'statusYawVelocityVehicle', put('yaw', SC.yaw));
+        await P.init();
+
+        // subscriptions: kept for the app's whole life (no traffic unless the value changes)
+        const watch = async (iface, handlers) => {
+            try {
+                const s = await this.ctx.signals.watch(iface, '1', handlers, this.log);
+                this.subs[iface] = s;
+                this.log.info('inputs: ' + iface.split('.').pop() + (s.error ? ' error: ' + s.error : ' subscribed'));
+            } catch (e) { this.log.warn('inputs: ' + iface + ': ' + e); }
+        };
+        await watch(PEDAL, { AngleAcceleratorPedal: put('throttle', SC.throttle) });
+        await watch(STEER, {
+            ActualSteeringAngleDriver: put('steer', SC.steer),
+            actualSteeringAngleDriverNoCRC: (v) => { if (!this.at.steer || Date.now() - this.at.steer > 500) this._put('steer', SC.steer(v)); },
+        });
+        await watch(DSC, {
+            StabilizationManagement: (v) => {
+                const r = v && v.statusBrakingDriver;
+                if (this.raw.braking.length < 6 && this.raw.braking.indexOf(String(r)) < 0) {
+                    this.raw.braking.push(String(r));
+                    this.log.info('inputs: statusBrakingDriver raw value ' + JSON.stringify(r));
+                }
+                this._put('braking', SC.braking(v));
+            },
+        });
+        if (GPS_SOURCE) { /* wired once the catalog names the position service */ }
+        else this.log.info('inputs: no GPS source yet (needs the car\'s SOME/IP catalog)');
+    }
+
+    run(on) { if (on) this.poller.start(); else this.poller.stop(); }
+
+    /** 'ok' (value within 2 s), 'waiting' (source there, nothing recent), 'none' (no source). */
+    status(t) {
+        const age = (k) => (this.at[k] ? t - this.at[k] : Infinity);
+        const st = (k, has) => (age(k) < 2000 ? 'ok' : has ? 'waiting' : 'none');
+        return {
+            polled: st('speed', true),
+            throttle: st('throttle', !!this.subs[PEDAL] && !this.subs[PEDAL].error),
+            steer: st('steer', !!this.subs[STEER] && !this.subs[STEER].error),
+            braking: st('braking', !!this.subs[DSC] && !this.subs[DSC].error),
+            gps: this.v.fixT && t - this.v.fixT < 3000 ? 'ok' : GPS_SOURCE ? 'waiting' : 'none',
+        };
+    }
+
+    anyLive() { return Object.keys(this.at).some((k) => this.at[k] > 0); }
+}
+
+module.exports = { Inputs, SC };

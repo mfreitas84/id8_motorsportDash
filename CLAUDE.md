@@ -130,6 +130,17 @@ Fresh, minimal, heavily-commented app that proves the plumbing end to end — NO
 - Keep OBD OFF in v0 — ONE OBD read (IAT 0x0F to DME 0x12) behind a setting, through our own
   `uds_guard.js` and the kit's `ReadOnlyDiag`, so the TASU path is demonstrated, gated.
   (Built: `apps/mdev_quickstart`, v0.1.0 — awaiting the on-car checklist in README.md.)
+
+## Track Dash (`apps/mdev_trackdash`) — decisions (2026-11-26)
+- Dash shows NO rpm (the driver's cluster has it; still logged). Throttle bar green, brake bar red,
+  steering centred bar; coolant / oil / speed tiles; track map with the GPS dot.
+- Track line: **record once, reuse** — saved line when GPS detects a known track, live trail otherwise,
+  "Save lap as track" after one closed lap. Tracks in `data/tracks.json`, CanBusTrackAnalyser format + `line`.
+- Header menu: Dash · Tracks · Rec log · Save USB. Log = CSV per session in `data/logs/`, 10 Hz, incl. GPS.
+- Save USB: stick present AND parked (speed < 1, rpm < 50, fresh). Needs the root remount helper (todo).
+- Open: GPS service (search the unit's catalog), brake intensity (car gives only on/off:
+  DSC `StabilizationManagement.statusBrakingDriver`; bar uses deceleration), whether pedal / steering
+  (subscribe-only in the kit) notify on the S58, yaw sign (`position.js` YAW_LEFT_POSITIVE).
 - No logging, no USB, no settings sprawl. Clean app.json / manifest.json / permissions.json.
 Once this runs on-car, layer: (1) the track-day thermal layout + peak-hold, (2) dataDir CSV logger,
 (3) parked USB copy via root helper.

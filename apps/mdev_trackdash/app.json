@@ -1,0 +1,51 @@
+{
+  "id": "mdev_trackdash",
+  "title": "Track Dash",
+  "description": "Track map with the car's position, coolant / oil / speed, throttle, brake and steering, and a CSV session log",
+  "version": "0.1.0",
+  "vendor": "mdev",
+  "loggingId": "MD02",
+  "iconGlyph": "flag",
+  "mguHmi": ["ID8"],
+
+  "signals": {
+    "de.bmw.infotainment.vehicle.CDS": {
+      "statusEngineSpeed2": "r",
+      "statusEngineTemperature": "r"
+    },
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "statusCarSpeed2": "r"
+    },
+    "de.bmw.infotainment.vehicle.CDS2": {
+      "statusLongitudinalAccelerationMassCenter": "r",
+      "statusLateralAccelerationMassCenter": "r",
+      "statusYawVelocityVehicle": "r"
+    },
+    "de.bmw.powertrain.AcceleratorPedal": {
+      "_optional": "the throttle bar",
+      "AngleAcceleratorPedal": "s"
+    },
+    "de.bmw.chassis.SteeringAngle": {
+      "_optional": "the steering bar",
+      "ActualSteeringAngleDriver": "s",
+      "actualSteeringAngleDriverNoCRC": "s"
+    },
+    "de.bmw.chassis.VehicleStabilizationManagement": {
+      "_optional": "brake on / off (the brake bar then estimates from deceleration)",
+      "StabilizationManagement": "s"
+    }
+  },
+
+  "screens": [
+    { "name": "MAIN", "kind": "canvas", "title": "Track Dash",
+      "buttons": [["BTN_PAGE", "Dash / Tracks"], ["BTN_REC", "Rec log"], ["BTN_USB", "Save USB"], ["BTN_SETTINGS", "Settings"]] }
+  ],
+
+  "settings": [
+    { "key": "coolWarn", "label": "Coolant warning from", "type": "number", "unit": "°C", "default": 110, "steps": [100, 105, 110, 115, 120] },
+    { "key": "oilWarn", "label": "Oil warning from", "type": "number", "unit": "°C", "default": 130, "steps": [115, 120, 125, 130, 135, 140, 145] },
+    { "key": "steerRange", "label": "Steering bar full scale", "type": "number", "unit": "°", "default": 180, "steps": [90, 180, 270, 360, 540] },
+    { "key": "demo", "label": "Demo data", "type": "choice", "default": "auto",
+      "options": [["auto", "Auto (until the car answers)"], ["on", "On"], ["off", "Off"]] }
+  ]
+}
