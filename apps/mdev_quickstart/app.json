@@ -31,6 +31,8 @@
   "settings": [
     { "key": "obdIat", "label": "OBD demo: intake air temp (DME)", "type": "bool", "default": false },
     { "key": "demo", "label": "Demo data", "type": "choice", "default": "auto",
-      "options": [["auto", "Auto (until the car answers)"], ["on", "On"], ["off", "Off"]] }
+      "options": [["auto", "Auto (until the car answers)"], ["on", "On"], ["off", "Off"]] },
+    { "key": "logging", "label": "Logging", "type": "choice", "default": "normal",
+      "options": [["normal", "Normal"], ["debug", "Debug (auto-off after 2 h)"], ["off", "Off (no log files)"]] }
   ]
 }

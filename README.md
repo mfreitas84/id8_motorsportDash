@@ -148,6 +148,25 @@ how hard from the deceleration (1.3 g = 100 %).
 | 5 | g long / lat | Plausible under braking and in corners |
 | 6 | REC LOG | The REC badge counts up. STOP LOG says how many rows; the file is in `data/logs/` |
 
+## Logging (both apps): Settings → Logging
+
+| Mode | What is written |
+|---|---|
+| **Normal** (default) | The kit's small app log `data/<id>.log` (two files of 256 KB at most) |
+| **Debug** | Normal, plus `data/debug/<YYYYMMDD-HHMMSS>.log`: the start state (settings, every SOME/IP source and whether it works), the **raw value of every field once a second** exactly as the car sent it, counters every 5 s, every button, screen and setting change, OBD requests and replies, and errors with their stack. 2 MB a file, newest 5 kept. **Back to Normal by itself after 2 hours** (counted across restarts) |
+| **Off** | No log files at all. The existing app and debug logs are deleted, and the kit's own file log is switched off (a one-line patch, listed in `kit/UPSTREAM.md`). Your REC session CSVs are kept |
+
+To get a debug log off the car without SSH: **Settings → Debug log (QR)** shows it as QR codes. Photograph
+them, and `python kit/tools/qrlog_decode.py <photos>` turns them back into text. Over SSH it's in
+`/var/opt/public/oap/oap_<uid>/data/debug/`.
+
+**For the first drive, set Logging = Debug** in both apps. The raw values answer the open questions:
+which fields arrive, what the brake flag sends, and the steering and yaw signs.
+
+```sh
+node tests/test_debug.js                                         # the logging switch
+```
+
 ## Safety
 
 Every UDS / OBD request goes through two independent checks before it reaches the car:

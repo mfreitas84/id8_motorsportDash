@@ -43,7 +43,10 @@ class IatReader {
         this.timer = null;
         this.paused = false;         // the kit's "Stop all" (ctx.onPanic) is on
         this.state = { value: null, at: 0, status: 'off', note: '' };
+        this.onTrace = null;         // fn(what, details): every request and reply (the debug log)
     }
+
+    _trace(what, d) { if (this.onTrace) this.onTrace(what, d); }
 
     async _ensureLink() {
         if (this.link) return this.link;
@@ -84,12 +87,15 @@ class IatReader {
         const data = [PID_IAT];
         // (1) our gate, right before sending
         const verdict = this.guard.check(MODE_CURRENT_DATA, data);
-        if (!verdict.ok) { this.state.status = 'refused'; this.state.note = verdict.why; this.log.warn('OBD IAT: ' + verdict.why); return; }
+        if (!verdict.ok) { this.state.status = 'refused'; this.state.note = verdict.why; this.log.warn('OBD IAT: ' + verdict.why); this._trace('refused by gate', verdict.why); return; }
         this.busy = true;
+        const t0 = Date.now();
+        this._trace('request', { to: '0x12', uds: '01 0F', gate: verdict.cls });
         try {
             // (2)+(3) the kit's read-only link; accept() keeps only OUR answer: other apps poll the DME too
             const uds = await this.link.physical(DME, MODE_CURRENT_DATA, data, 1500,
                 (u) => (u[0] === 0x41 && u[1] === PID_IAT) || (u[0] === 0x7F && u[1] === MODE_CURRENT_DATA));
+            this._trace('reply', { ms: Date.now() - t0, uds: uds === undefined ? 'cancelled' : uds === null ? 'none' : uds.map((b) => (b < 16 ? '0' : '') + b.toString(16)).join(' ') });
             if (uds === undefined) return;                              // cancelled before it was sent
             if (uds === null) { this.state.status = 'no answer'; return; }
             if (uds[0] === 0x7F) { this.state.status = 'refused by DME'; this.state.note = 'NRC 0x' + uds[2].toString(16); return; }
@@ -99,6 +105,7 @@ class IatReader {
         } catch (e) {
             this.state.status = 'error';
             this.state.note = String(e.message || e);
+            this._trace('error', this.state.note);
         } finally {
             this.busy = false;
         }

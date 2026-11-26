@@ -76,22 +76,28 @@ class Inputs {
         this.raw = { braking: [] };                    // first few raw brake values seen, for the log
         this.poller = new Poller(ctx.signals, ctx.log, 100);
         this.subs = {};
+        this.onRaw = null;              // fn(name, rawValue) for every value that arrives (debug.js)
     }
+
+    /** Wrap a handler so the raw value is also handed to onRaw (the debug log) under `name`. */
+    _tap(name, fn) { return (v) => { if (this.onRaw) this.onRaw(name, v); fn(v); }; }
 
     _put(k, x) { if (x !== null && x !== undefined) { this.v[k] = x; this.at[k] = Date.now(); } }
 
     async init() {
         const P = this.poller, put = (k, f) => (v) => this._put(k, f(v));
-        P.add(CDS, 'statusEngineSpeed2', put('rpm', SC.rpm));
-        P.add(CDS, 'statusEngineTemperature', (v) => { this._put('coolant', SC.coolant(v)); this._put('oil', SC.oil(v)); });
-        P.add(V2, 'statusCarSpeed2', put('speed', SC.speed));
-        P.add(CDS2, 'statusLongitudinalAccelerationMassCenter', put('gLong', SC.gLong));
-        P.add(CDS2, 'statusLateralAccelerationMassCenter', put('gLat', SC.gLat));
-        P.add(CDS2, 'statusYawVelocityVehicle', put('yaw', SC.yaw));
+        const add = (iface, field, fn) => P.add(iface, field, this._tap(iface.split('.').pop() + '.' + field, fn));
+        add(CDS, 'statusEngineSpeed2', put('rpm', SC.rpm));
+        add(CDS, 'statusEngineTemperature', (v) => { this._put('coolant', SC.coolant(v)); this._put('oil', SC.oil(v)); });
+        add(V2, 'statusCarSpeed2', put('speed', SC.speed));
+        add(CDS2, 'statusLongitudinalAccelerationMassCenter', put('gLong', SC.gLong));
+        add(CDS2, 'statusLateralAccelerationMassCenter', put('gLat', SC.gLat));
+        add(CDS2, 'statusYawVelocityVehicle', put('yaw', SC.yaw));
         await P.init();
 
         // subscriptions: kept for the app's whole life (no traffic unless the value changes)
         const watch = async (iface, handlers) => {
+            Object.keys(handlers).forEach((f) => { handlers[f] = this._tap(iface.split('.').pop() + '.' + f, handlers[f]); });
             try {
                 const s = await this.ctx.signals.watch(iface, '1', handlers, this.log);
                 this.subs[iface] = s;
@@ -133,6 +139,14 @@ class Inputs {
     }
 
     anyLive() { return Object.keys(this.at).some((k) => this.at[k] > 0); }
+
+    /** How each source started, for the debug log's start line. */
+    sources() {
+        const out = { poller: this.poller.mode, gps: GPS_SOURCE ? GPS_SOURCE.iface : 'none (catalog needed)' };
+        Object.keys(this.subs).forEach((i) => { out[i.split('.').pop()] = this.subs[i].error ? 'error: ' + this.subs[i].error : 'subscribed'; });
+        Object.keys(this.poller.proxies).forEach((i) => { out[i.split('.').pop()] = this.poller.proxies[i].proxy ? (this.poller.proxies[i].available ? 'available' : 'proxy, not available yet') : 'no proxy'; });
+        return out;
+    }
 }
 
 module.exports = { Inputs, SC };

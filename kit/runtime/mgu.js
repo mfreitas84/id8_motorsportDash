@@ -84,6 +84,7 @@ function frameRefused(file, e) {
     }
 }
 function fileLog(level, msg) {
+    if (process.env.MGU_FILE_LOG === 'off') return;   // [id8 patch] the app's Logging = Off: write no log file
     try {
         const st = fs.existsSync(LOG_FILE) ? fs.statSync(LOG_FILE) : null;
         if (st && st.size > 256 * 1024) fs.renameSync(LOG_FILE, LOG_FILE + '.1');

@@ -141,6 +141,14 @@ Fresh, minimal, heavily-commented app that proves the plumbing end to end — NO
 - Open: GPS service (search the unit's catalog), brake intensity (car gives only on/off:
   DSC `StabilizationManagement.statusBrakingDriver`; bar uses deceleration), whether pedal / steering
   (subscribe-only in the kit) notify on the S58, yaw sign (`position.js` YAW_LEFT_POSITIVE).
+
+## Logging switch (every app): Settings > Logging = Normal / Debug / Off — `apps/*/debug.js`
+- Same file in each app (test_debug.js checks they match). Debug = raw values 1 Hz + stats 5 s + events,
+  `data/debug/`, 2 MB x 5 files, auto-off after 2 h (counted across restarts via `data/debug/.since`).
+- Off = no files at all: deletes app + debug logs, sets `MGU_FILE_LOG=off`, which the one local kit
+  patch (`tools/sync_kit.py` PATCHES, re-applied on every sync) honours in `mgu.js` fileLog. Session CSVs kept.
+- New apps: create `new Debug(ctx)` first in start(), feed `dbg.raw()` from every signal handler,
+  `dbg.stats()`, `dbg.settingsRow()` (QR export), add the `logging` setting to app.json.
 - No logging, no USB, no settings sprawl. Clean app.json / manifest.json / permissions.json.
 Once this runs on-car, layer: (1) the track-day thermal layout + peak-hold, (2) dataDir CSV logger,
 (3) parked USB copy via root helper.

@@ -31,6 +31,7 @@ const { TrackStore, TrailRecorder } = require('./tracks');
 const { SessionLogger } = require('./logger');
 const { UsbBridge } = require('./usb');
 const { Demo } = require('./demo');
+const { Debug } = require('./debug');
 
 const SCREEN = 'MAIN';
 const SAMPLE_MS = 100;            // 10 Hz: dashboard model, dead reckoning, log rows
@@ -44,9 +45,12 @@ const COLUMNS = ['t_iso', 't_ms', 'lat', 'lon', 'gps_lat', 'gps_lon', 'gps_age_m
 mgu.run({
     async start(ctx) {
         const log = ctx.log, S = ctx.settings;
+        // Settings > Logging (Normal / Debug / Off): first, so the debug file sees everything that follows
+        const dbg = new Debug(ctx);
         log.info('trackdash: start');
 
         const inputs = new Inputs(ctx);
+        inputs.onRaw = (name, v) => dbg.raw(name, v);         // raw car values, once a second, in Debug
         await inputs.init();
         const demo = new Demo();
         const pos = new Position();
@@ -109,6 +113,9 @@ mgu.run({
                 selId = null; toast('Track deleted');
             },
         };
+        // every action is one line in the debug log
+        Object.keys(act).forEach((k) => { const fn = act[k]; act[k] = (...a) => { dbg.event('action ' + k, a.length ? a : undefined); return fn(...a); }; });
+        ctx.ui.onVisible((name, on) => dbg.event('screen ' + name + (on ? ' shown' : ' hidden')));
         if (ctx.onTab) ctx.onTab((i) => {
             if (i === TAB_REC) return act.toggleRec();
             if (i === TAB_USB) return act.saveUsb();
@@ -126,7 +133,7 @@ mgu.run({
             const now = Date.now(), dm = demoOn();
             if (dm !== demoWas) {                                         // live <-> demo: start the map afresh
                 demoWas = dm; pos.reset(); trail.reset(); track = null; lastFixT = 0;
-                log.info(dm ? 'demo data on' : 'live car data');
+                log.info(dm ? 'demo data on' : 'live car data');       // (also in the debug log: ctx.log is wrapped)
             }
             d = dm ? demo.sample(now) : inputs.v;
             if (d.fixT && d.fixT !== lastFixT) { lastFixT = d.fixT; pos.fix(d.fix[0], d.fix[1], d.fixT); }
@@ -171,6 +178,20 @@ mgu.run({
             return ctx.ui.image('MAIN_GFX', cv);
         });
 
+        // ---- debug log: how things stand at start, then counters every 5 s ----------------------------
+        dbg.startup({ sources: inputs.sources(), tracks: realStore.tracks.map((x) => x.id), dataDir: ctx.dataDir });
+        dbg.stats(() => {
+            const now = Date.now(), ages = {};
+            Object.keys(inputs.at).forEach((k) => { ages[k] = inputs.at[k] ? now - inputs.at[k] : null; });
+            const st = logger.status();
+            return {
+                demo: !!demoWas, page: PAGES[page], visible: ctx.ui.isVisible(SCREEN),
+                poll: Object.assign({ running: !!inputs.poller.timer }, inputs.poller.stats), src: inputs.status(now), ageMs: ages,
+                gps: { fixAgeMs: pos.fixAge(now), heading: pos.heading() }, track: track ? track.id : null,
+                trailM: Math.round(trail.lengthM()), lapReady: trail.lapReady(), rec: st.on ? { rows: st.rows, kb: Math.round(st.bytes / 1024) } : false,
+            };
+        });
+        dbg.settingsRow();
         log.info('trackdash: ready');
     },
 });

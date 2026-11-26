@@ -12,3 +12,7 @@ Don't edit files here: change them upstream or in `apps/`, then re-run
 `python tools/sync_kit.py <idrive7-apps clone>`. What is left out and why is at the top of
 `tools/sync_kit.py` (the GPL-3.0 renderer and emulator, upstream icons and tests, and the
 ru / zh-CN fault-text databases).
+
+## Local patches (re-applied by every sync, marked `[id8 patch]` in the code)
+
+- `kit/runtime/mgu.js`: lets an app switch the kit's data/<id>.log off completely (Settings > Logging = Off)

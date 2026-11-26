@@ -46,6 +46,8 @@
     { "key": "oilWarn", "label": "Oil warning from", "type": "number", "unit": "°C", "default": 130, "steps": [115, 120, 125, 130, 135, 140, 145] },
     { "key": "steerRange", "label": "Steering bar full scale", "type": "number", "unit": "°", "default": 180, "steps": [90, 180, 270, 360, 540] },
     { "key": "demo", "label": "Demo data", "type": "choice", "default": "auto",
-      "options": [["auto", "Auto (until the car answers)"], ["on", "On"], ["off", "Off"]] }
+      "options": [["auto", "Auto (until the car answers)"], ["on", "On"], ["off", "Off"]] },
+    { "key": "logging", "label": "Logging", "type": "choice", "default": "normal",
+      "options": [["normal", "Normal"], ["debug", "Debug (auto-off after 2 h)"], ["off", "Off (no log files)"]] }
   ]
 }

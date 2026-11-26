@@ -18,6 +18,9 @@ What is left out, and why:
                                    --language ru / zh-CN builds of the Fault Scanner.
 
 Everything copied keeps its MIT licence: kit/LICENSE is upstream's, kit/UPSTREAM.md records the commit.
+
+Local patches (PATCHES below) are applied after every copy and listed in kit/UPSTREAM.md. Each is an
+exact text replacement: if upstream changed the spot, the sync stops and says so instead of guessing.
 """
 import os, shutil, subprocess, sys
 
@@ -26,6 +29,16 @@ ROOT = os.path.abspath(os.path.join(HERE, '..'))
 DEST = os.path.join(ROOT, 'kit')
 
 SKIP_DIRS = {'renderd', 'emu', 'icons', 'fixtures', '__pycache__', '.font-cache'}
+
+# (file under kit/, exact text upstream has, what replaces it, why)
+PATCHES = [
+    ('runtime/mgu.js',
+     "function fileLog(level, msg) {\n    try {\n",
+     "function fileLog(level, msg) {\n"
+     "    if (process.env.MGU_FILE_LOG === 'off') return;   // [id8 patch] the app's Logging = Off: write no log file\n"
+     "    try {\n",
+     "lets an app switch the kit's data/<id>.log off completely (Settings > Logging = Off)"),
+]
 SKIP_FILES = {'diagnostic-full.ru.json', 'diagnostic-full.zh-CN.json'}
 
 
@@ -82,6 +95,17 @@ def main():
         shutil.copytree(os.path.join(src, 'emu'), os.path.join(DEST, 'emu'))
         print('emulator copied to kit/emu (git-ignored: GPL-3.0, local use only)')
 
+    applied = []
+    for rel, old, new, why in PATCHES:
+        f = os.path.join(DEST, rel)
+        with open(f, encoding='utf-8', newline='') as fh:
+            text = fh.read()
+        if text.count(old) != 1:
+            raise SystemExit('patch for %s no longer fits upstream (%s): update PATCHES in tools/sync_kit.py' % (rel, why))
+        with open(f, 'w', encoding='utf-8', newline='') as fh:
+            fh.write(text.replace(old, new))
+        applied.append((rel, why))
+
     shutil.copy2(os.path.join(src_repo, 'LICENSE'), os.path.join(DEST, 'LICENSE'))
     with open(os.path.join(DEST, 'UPSTREAM.md'), 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(
@@ -96,7 +120,10 @@ def main():
             "Don't edit files here: change them upstream or in `apps/`, then re-run\n"
             '`python tools/sync_kit.py <idrive7-apps clone>`. What is left out and why is at the top of\n'
             '`tools/sync_kit.py` (the GPL-3.0 renderer and emulator, upstream icons and tests, and the\n'
-            'ru / zh-CN fault-text databases).\n' % (commit, commit, date, count))
+            'ru / zh-CN fault-text databases).\n\n'
+            '## Local patches (re-applied by every sync, marked `[id8 patch]` in the code)\n\n'
+            % (commit, commit, date, count)
+            + ''.join('- `kit/%s`: %s\n' % (rel, why) for rel, why in applied))
     print('kit/ synced from %s (%s): %d files' % (commit[:10], date, count))
 
 

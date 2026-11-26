@@ -32,6 +32,7 @@ const Sim = require('./kit/sim');
 const { Poller } = require('./poller');
 const { UdsGuard } = require('./uds_guard');
 const { IatReader } = require('./obd_iat');
+const { Debug } = require('./debug');
 
 const SCREEN = 'MAIN';
 const POLL_MS = 100;                 // 10 Hz
@@ -51,6 +52,8 @@ const OIL_ZONES = [{ from: 130, to: 999, color: 'warn' }, { from: 140, to: 999, 
 mgu.run({
     async start(ctx) {
         const log = ctx.log;
+        // Settings > Logging (Normal / Debug / Off, debug.js): first, so the debug file sees everything after it
+        const dbg = new Debug(ctx);
         log.info('quickstart: start');
 
         // ---- latest values, in real units, with the time each one arrived --------------------------
@@ -63,6 +66,9 @@ mgu.run({
 
         // ---- SOME/IP: one poller, three fields on two interfaces -------------------------------------
         const poller = new Poller(ctx.signals, log, POLL_MS);
+        // in Debug, every raw value as the car sent it (written once a second): wrap add() once here
+        const addRaw = poller.add.bind(poller);
+        poller.add = (iface, field, fn) => addRaw(iface, field, (v) => { dbg.raw(iface.split('.').pop() + '.' + field, v); fn(v); });
         poller.add('de.bmw.infotainment.vehicle.CDS', 'statusEngineSpeed2', (v) => {
             const rpm = scale(v && v.actualValueRPMEngineCrankshaft, RPM);
             put('rpm', rpm); guard.rpm(rpm);
@@ -79,6 +85,7 @@ mgu.run({
 
         // ---- OBD over TASU: built only when the setting turns it on ----------------------------------
         const iat = new IatReader(ctx, guard);
+        iat.onTrace = (what, d) => dbg.event('obd ' + what, d);      // each request / reply in the debug log
         // (the PC preview's stubbed head unit has no Stop all; the kit's own apps check the same way)
         if (ctx.onPanic) ctx.onPanic((on) => iat.panic(on));
 
@@ -88,7 +95,7 @@ mgu.run({
             if (visible()) poller.start(); else poller.stop();
             if (visible() && ctx.settings.get('obdIat')) iat.start(); else iat.stop();
         };
-        ctx.ui.onVisible((name) => { if (name === SCREEN) apply(); });
+        ctx.ui.onVisible((name, on) => { dbg.event('screen ' + name + (on ? ' shown' : ' hidden')); if (name === SCREEN) apply(); });
         ctx.settings.onChange((key) => { if (key === 'obdIat') apply(); });
         apply();
 
@@ -141,6 +148,15 @@ mgu.run({
             return ctx.ui.image('MAIN_GFX', cv);
         });
 
+        // debug log: the start state, then counters every 5 s
+        dbg.startup({ poller: poller.mode, proxies: Object.keys(poller.proxies).map((i) => i.split('.').pop() + (poller.proxies[i].proxy ? '' : ' (no proxy)')) });
+        dbg.stats(() => ({
+            poll: Object.assign({ running: !!poller.timer, valuesPerS: rate }, poller.stats),
+            ageMs: Object.keys(seen).reduce((o, k) => { o[k] = seen[k] ? Date.now() - seen[k] : null; return o; }, {}),
+            obd: { on: !!ctx.settings.get('obdIat'), status: iat.state.status, note: iat.state.note, value: iat.state.value },
+            parked: guard.parked(), demo: demoOn(),
+        }));
+        dbg.settingsRow();
         log.info('quickstart: ready (poller ' + poller.mode + ')');
     },
 });
