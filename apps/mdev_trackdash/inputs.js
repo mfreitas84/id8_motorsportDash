@@ -16,15 +16,17 @@
  *                                              DSC StabilizationManagement.statusBrakingDriver (brake on/off)
  *   If a subscribed one stays silent on the car, the catalog tells whether it has a getter to poll.
  *
- * GPS: NO SOURCE YET. No public app reads a position over SOME/IP; the car's own catalog
- * (reference/someip-interfaces.json) has to show the service. GPS_SOURCE below is where it goes.
- * Until then fix stays null on the car (the map says so) and the demo provides one.
+ * GPS: de.bmw.infotainment.GPSData . GPSPositionExtendedCAN, polled at 1 Hz by its own poller (the
+ * head unit's GPS updates about once a second). gps.js finds latitude / longitude in the record and its
+ * unit; position.js then moves the dot at 10 Hz between fixes. speedGPSCAN and
+ * statusQualityPositionGPSCAN are kept raw (their scales are unknown) for the log.
  *
  * Brake: the car gives "driver is braking" (on / off), not pedal travel or pressure. The bar shows
  * how hard from the deceleration while that flag is on; without the flag it estimates from
  * deceleration alone and says so. A real pressure source is another catalog question.
  */
 const { Poller } = require('./poller');
+const { GpsDecoder, find } = require('./gps');
 
 const CDS = 'de.bmw.infotainment.vehicle.CDS';
 const CDS2 = 'de.bmw.infotainment.vehicle.CDS2';
@@ -33,8 +35,9 @@ const PEDAL = 'de.bmw.powertrain.AcceleratorPedal';
 const STEER = 'de.bmw.chassis.SteeringAngle';
 const DSC = 'de.bmw.chassis.VehicleStabilizationManagement';
 
-// Where the GPS will come from once the catalog shows it: { iface, field, lat(v), lon(v) }.
-const GPS_SOURCE = null;
+const GPS = 'de.bmw.infotainment.GPSData';
+const GPS_FIELD = 'GPSPositionExtendedCAN';
+const GPS_MS = 1000;
 
 // Raw -> real units: BMW's scalings, as the kit's car.js and Live Data use them (README section 7).
 const num = (x) => (typeof x === 'number' && isFinite(x) ? x : null);
@@ -70,11 +73,14 @@ class Inputs {
         this.ctx = ctx;
         this.log = ctx.log;
         this.v = { rpm: null, speed: null, coolant: null, oil: null, gLong: null, gLat: null, yaw: null,
-            throttle: null, steer: null, braking: null, fix: null, fixT: 0 };
+            throttle: null, steer: null, braking: null, fix: null, fixT: 0, gpsSpeedRaw: null, gpsQualityRaw: null };
         this.at = {};
         Object.keys(this.v).forEach((k) => { this.at[k] = 0; });
         this.raw = { braking: [] };                    // first few raw brake values seen, for the log
         this.poller = new Poller(ctx.signals, ctx.log, 100);
+        this.gpsPoller = new Poller(ctx.signals, ctx.log, GPS_MS);
+        this.gps = new GpsDecoder(ctx.log);
+        this.odoM = 0;                  // metres driven since start, from road speed
         this.subs = {};
         this.onRaw = null;              // fn(name, rawValue) for every value that arrives (debug.js)
     }
@@ -89,7 +95,12 @@ class Inputs {
         const add = (iface, field, fn) => P.add(iface, field, this._tap(iface.split('.').pop() + '.' + field, fn));
         add(CDS, 'statusEngineSpeed2', put('rpm', SC.rpm));
         add(CDS, 'statusEngineTemperature', (v) => { this._put('coolant', SC.coolant(v)); this._put('oil', SC.oil(v)); });
-        add(V2, 'statusCarSpeed2', put('speed', SC.speed));
+        add(V2, 'statusCarSpeed2', (v) => {
+            const kmh = SC.speed(v), t = Date.now();
+            // odometer from road speed (trapezoid, gaps over 1 s skipped): gps.js checks GPS units against it
+            if (kmh !== null && this.at.speed && t - this.at.speed < 1000 && this.v.speed !== null) this.odoM += ((kmh + this.v.speed) / 2 / 3.6) * ((t - this.at.speed) / 1000);
+            this._put('speed', kmh);
+        });
         add(CDS2, 'statusLongitudinalAccelerationMassCenter', put('gLong', SC.gLong));
         add(CDS2, 'statusLateralAccelerationMassCenter', put('gLat', SC.gLat));
         add(CDS2, 'statusYawVelocityVehicle', put('yaw', SC.yaw));
@@ -119,11 +130,35 @@ class Inputs {
                 this._put('braking', SC.braking(v));
             },
         });
-        if (GPS_SOURCE) { /* wired once the catalog names the position service */ }
-        else this.log.info('inputs: no GPS source yet (needs the car\'s SOME/IP catalog)');
+        // GPS: one record a second; the whole record goes to the debug log (field discovery)
+        this.gpsPoller.add(GPS, GPS_FIELD, this._tap('GPSData.' + GPS_FIELD, (rec) => {
+            const t = Date.now();
+            this.v.gpsSpeedRaw = num(find(rec, 'speedGPSCAN'));
+            const q = find(rec, 'statusQualityPositionGPSCAN');
+            this.v.gpsQualityRaw = q === undefined ? null : q;
+            this.at.gpsRecord = t;
+            const fix = this.gps.feed(rec, t, this.odoM);
+            if (fix) { this.v.fix = fix; this.v.fixT = t; this.at.fix = t; }
+        }));
+        await this.gpsPoller.init();
     }
 
-    run(on) { if (on) this.poller.start(); else this.poller.stop(); }
+    run(on) {
+        if (on) { this.poller.start(); this.gpsPoller.start(); } else { this.poller.stop(); this.gpsPoller.stop(); }
+    }
+
+    /**
+     * GPS for the screen: 'ok' (a fix within 3 s), 'none' (no GPSData service on this unit),
+     * 'nodata' (no record yet, or no fix), 'nofields' (no lat / lon in the record), 'calibrating'.
+     */
+    gpsState(t) {
+        if (this.v.fixT && t - this.v.fixT < 3000) return 'ok';
+        const e = this.gpsPoller.proxies[GPS];
+        if (this.gpsPoller.mode === 'car' && (!e || !e.proxy)) return 'none';
+        if (!this.at.gpsRecord || t - this.at.gpsRecord > 3000) return this.gpsPoller.mode === 'car' ? 'nodata' : 'none';
+        const ph = this.gps.state().phase;
+        return ph === 'ok' ? 'nodata' : ph;
+    }
 
     /** 'ok' (value within 2 s), 'waiting' (source there, nothing recent), 'none' (no source). */
     status(t) {
@@ -134,7 +169,7 @@ class Inputs {
             throttle: st('throttle', !!this.subs[PEDAL] && !this.subs[PEDAL].error),
             steer: st('steer', !!this.subs[STEER] && !this.subs[STEER].error),
             braking: st('braking', !!this.subs[DSC] && !this.subs[DSC].error),
-            gps: this.v.fixT && t - this.v.fixT < 3000 ? 'ok' : GPS_SOURCE ? 'waiting' : 'none',
+            gps: this.gpsState(t),
         };
     }
 
@@ -142,7 +177,8 @@ class Inputs {
 
     /** How each source started, for the debug log's start line. */
     sources() {
-        const out = { poller: this.poller.mode, gps: GPS_SOURCE ? GPS_SOURCE.iface : 'none (catalog needed)' };
+        const g = this.gpsPoller.proxies[GPS];
+        const out = { poller: this.poller.mode, GPSData: this.gpsPoller.mode !== 'car' ? 'bench' : g && g.proxy ? 'proxy built' : 'no proxy (service missing?)' };
         Object.keys(this.subs).forEach((i) => { out[i.split('.').pop()] = this.subs[i].error ? 'error: ' + this.subs[i].error : 'subscribed'; });
         Object.keys(this.poller.proxies).forEach((i) => { out[i.split('.').pop()] = this.poller.proxies[i].proxy ? (this.poller.proxies[i].available ? 'available' : 'proxy, not available yet') : 'no proxy'; });
         return out;

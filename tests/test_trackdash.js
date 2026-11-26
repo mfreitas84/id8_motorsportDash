@@ -190,4 +190,62 @@ test('statusBrakingDriver: numbers and German / English enum names', () => {
     assert.strictEqual(SC.braking({}), null);
 });
 
+// ---- GPS record decoding (gps.js) -------------------------------------------------------------------
+const { GpsDecoder, SCALES } = require(path.join(APP, 'gps'));
+
+/** One record a second from a demo drive, lat / lon encoded in `unit`, wrapped like a SOME/IP struct. */
+function gpsDrive(unit, seconds, wrap) {
+    const demo = new Demo(), dec = new GpsDecoder(quiet), k = SCALES.find((s) => s.name === unit).k;
+    let t = 2e9, last = null, truth = null, odo = 0;
+    for (let s = 0; s < seconds; s++) {
+        for (let i = 0; i < 10; i++) { t += 100; const before = demo.s; demo.sample(t); odo += (demo.s - before + demo.c.length) % demo.c.length; }
+        const d = demo.d;
+        truth = demo.pl.ll(demo.c.pts[Math.floor(demo.s / 2) % demo.c.n]);
+        const enc = (x) => (unit === 'deg' ? x : Math.round(x / k));
+        const rec = wrap(enc(truth[0]), enc(truth[1]), d);
+        last = dec.feed(rec, t, odo);
+    }
+    return { dec, last, truth };
+}
+const plain = (la, lo, d) => ({ latitude: la, longitude: lo, speedGPSCAN: 18000, statusQualityPositionGPSCAN: 3,
+    lateralAcceleration: 123, longitudinalSomething: 456 });
+
+for (const unit of ['1e-7 deg', '180/2^31 deg', 'mas']) {
+    test('GPS: integer position in ' + unit + ' -> the unit is learned from wheel distance, fix on the true spot', () => {
+        const r = gpsDrive(unit, 40, plain);
+        assert.strictEqual(r.dec.state().phase, 'ok', JSON.stringify(r.dec.state()));
+        assert.strictEqual(r.dec.state().scale, unit);
+        assert.ok(geo.distance(r.last, r.truth) < 1, 'fix within 1 m: ' + geo.distance(r.last, r.truth).toFixed(2));
+    });
+}
+
+test('GPS: fractional degrees are taken at once', () => {
+    const dec = new GpsDecoder(quiet);
+    const fix = dec.feed({ pos: { lat: 37.8925123, lng: -7.3420456 } }, 1, 0);
+    assert.deepStrictEqual(fix, [37.8925123, -7.3420456]);
+    assert.strictEqual(dec.state().scale, 'deg');
+    assert.strictEqual(dec.state().lat, 'pos.lat');
+});
+
+test('GPS: nested names like positionLatitude / positionLongitude are found', () => {
+    const r = gpsDrive('180/2^31 deg', 40, (la, lo) => ({ statusPosition: { positionLatitude: la, positionLongitude: lo }, speedGPSCAN: 1 }));
+    assert.strictEqual(r.dec.state().lat, 'statusPosition.positionLatitude');
+    assert.strictEqual(r.dec.state().phase, 'ok');
+});
+
+test('GPS: a record without position fields says so; lateral / longitudinal are never taken', () => {
+    const dec = new GpsDecoder(quiet);
+    assert.strictEqual(dec.feed({ speedGPSCAN: 18000, statusQualityPositionGPSCAN: 2, lateralAcc: 5, longitudinalAcc: 7 }, 1, 50), null);
+    assert.strictEqual(dec.state().phase, 'nofields');
+});
+
+test('GPS: no fix yet (zeros) is no data, and nothing reaches the map while calibrating', () => {
+    const dec = new GpsDecoder(quiet);
+    assert.strictEqual(dec.feed({ latitude: 0, longitude: 0 }, 1, 0), null);
+    assert.strictEqual(dec.state().phase, 'nodata');
+    // standing still: the units can't be told apart, so no position yet
+    for (let i = 0; i < 5; i++) assert.strictEqual(dec.feed({ latitude: 452063000, longitude: -87672000 }, 1000 * (i + 2), 100), null);
+    assert.strictEqual(dec.state().phase, 'calibrating');
+});
+
 console.log('\n' + passed + ' tests passed');

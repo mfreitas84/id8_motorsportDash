@@ -10,6 +10,14 @@ const G = require('./kit/gauges');
 const geo = require('./geo');
 
 const GREEN = '#2ecc40', RED = '#ff3b30';
+
+// what the map says while there is no position (inputs.gpsState)
+const GPS_TEXT = {
+    none: ['No GPS on this unit', 'the GPSData service is missing'],
+    nodata: ['Waiting for GPS', 'no fix yet'],
+    nofields: ['GPS found, no position in it', 'set Logging = Debug and send the log'],
+    calibrating: ['GPS: learning its units', 'drive a few hundred metres'],
+};
 const MAX_TRAIL_SEG = 600;
 
 /* ---------------- the map ---------------- */
@@ -73,7 +81,7 @@ function drawMap(cv, t, r, m) {
             area.x + 6, area.y + area.h - 6, 22, m.lapReady ? t.accent : t.dim);
         return;
     }
-    const msg = m.gpsState === 'none' ? ['No GPS source yet', 'needs the car\'s SOME/IP catalog'] : ['Waiting for GPS', ''];
+    const msg = GPS_TEXT[m.gpsState] || GPS_TEXT.nodata;
     cv.text(msg[0], area.x + area.w / 2, area.y + area.h / 2, 32, t.dim, { align: 'center', font: 'bold' });
     if (msg[1]) cv.text(msg[1], area.x + area.w / 2, area.y + area.h / 2 + 40, 22, t.dim, { align: 'center' });
 }
@@ -147,7 +155,7 @@ function tracks(cv, t, m, act) {
     const R = G.panel(cv, t, 732, top, 852, bottom - top, 'Track');
     const sel = m.store.get(m.selId) || m.track;
     const line = (i, s, c) => cv.text(s, R.x + 24, R.y + 84 + i * 34, 24, c || t.text);
-    line(0, 'GPS: ' + (m.gpsState === 'ok' ? 'fix ' + (m.fixAge / 1000).toFixed(1) + ' s ago' : m.gpsState === 'none' ? 'no source yet' : 'waiting'), m.gpsState === 'ok' ? t.text : t.dim);
+    line(0, 'GPS: ' + (m.gpsState === 'ok' ? 'fix ' + (m.fixAge / 1000).toFixed(1) + ' s ago' : (GPS_TEXT[m.gpsState] || GPS_TEXT.nodata)[0]), m.gpsState === 'ok' ? t.text : t.dim);
     line(1, 'Detected: ' + (m.track ? m.track.name : 'none'), t.dim);
     if (sel) {
         line(2, sel.name + (sel.length_m ? '   ' + (sel.length_m / 1000).toFixed(2) + ' km' : ''));

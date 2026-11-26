@@ -98,7 +98,16 @@ Glanceable while driving. Priorities for track engine survival:
 ## Open questions to resolve on-device
 - USB mount path (feature B).
 - Oil-pressure availability (PID or 0x22 DID; the M2 S58 may expose it).
-- GPS/position service for lap timing (future; is there a SOME/IP position provider?).
+- GPS / position: service `de.bmw.infotainment.GPSData`, getter `GPSPositionExtendedCAN` EXISTS and is
+  reachable on ID8 (IterioDev Draggy 1.2.1 declares it — facts checked against its manifest; its code is
+  PolyForm Strict, never copy it). Draggy only uses `speedGPSCAN` (ground speed; scale unknown, ~17000–19000
+  raw at 1–60 km/h) and `statusQualityPositionGPSCAN`, polled ~1 Hz, and notes 1 Hz is too slow to time
+  splits. **No app reads lat/lon** — whether the record carries them, and their scale, is unconfirmed.
+  - Track MAP: 1 Hz is enough — Track Dash dead-reckons the dot at 10 Hz from speed + yaw between fixes.
+  - Lap / sector TIMING: 1 Hz is anchor-grade only. Keep lap timing out until decided: external ≥10 Hz
+    GPS or beacon, or start/finish crossing on the dead-reckoned position (~±0.1–0.3 s).
+  - Field discovery: Track Dash polls the record at 1 Hz; Logging = Debug writes it raw. `gps.js` looks
+    for lat/lon by name and learns the scale against wheel speed; confirm with a real debug log.
 - Confirm which SOME/IP getters actually return live values on the S58 (cardash CAL notes are guesses).
 
 ## Storage & USB (learned from oap-driverecorder-next 2.5.2)
@@ -138,7 +147,8 @@ Fresh, minimal, heavily-commented app that proves the plumbing end to end — NO
   "Save lap as track" after one closed lap. Tracks in `data/tracks.json`, CanBusTrackAnalyser format + `line`.
 - Header menu: Dash · Tracks · Rec log · Save USB. Log = CSV per session in `data/logs/`, 10 Hz, incl. GPS.
 - Save USB: stick present AND parked (speed < 1, rpm < 50, fresh). Needs the root remount helper (todo).
-- Open: GPS service (search the unit's catalog), brake intensity (car gives only on/off:
+- GPS from `GPSData.GPSPositionExtendedCAN` at 1 Hz (`gps.js`, see Open questions). Open: whether it has
+  lat/lon (debug log from the car), brake intensity (car gives only on/off:
   DSC `StabilizationManagement.statusBrakingDriver`; bar uses deceleration), whether pedal / steering
   (subscribe-only in the kit) notify on the S58, yaw sign (`position.js` YAW_LEFT_POSITIVE).
 

@@ -21,6 +21,10 @@
       "statusLateralAccelerationMassCenter": "r",
       "statusYawVelocityVehicle": "r"
     },
+    "de.bmw.infotainment.GPSData": {
+      "_optional": "the car's GPS: the car's position on the track map",
+      "GPSPositionExtendedCAN": "r"
+    },
     "de.bmw.powertrain.AcceleratorPedal": {
       "_optional": "the throttle bar",
       "AngleAcceleratorPedal": "s"

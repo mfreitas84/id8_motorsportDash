@@ -40,7 +40,8 @@ const PAGES = ['Dash', 'Tracks'];
 const TAB_REC = 2, TAB_USB = 3;
 
 const COLUMNS = ['t_iso', 't_ms', 'lat', 'lon', 'gps_lat', 'gps_lon', 'gps_age_ms', 'heading_deg', 'speed_kmh', 'rpm',
-    'coolant_c', 'oil_c', 'throttle_pct', 'brake_on', 'brake_pct', 'steer_deg', 'g_long', 'g_lat', 'yaw_dps', 'track_id', 'demo'];
+    'coolant_c', 'oil_c', 'throttle_pct', 'brake_on', 'brake_pct', 'steer_deg', 'g_long', 'g_lat', 'yaw_dps', 'track_id', 'demo',
+    'gps_speed_raw', 'gps_quality_raw'];      // GPSData's ground speed and fix quality, unscaled (scales unknown)
 
 mgu.run({
     async start(ctx) {
@@ -151,6 +152,7 @@ mgu.run({
                     speed_kmh: d.speed, rpm: d.rpm, coolant_c: d.coolant, oil_c: d.oil,
                     throttle_pct: d.throttle, brake_on: d.braking, brake_pct: b.pct, steer_deg: d.steer,
                     g_long: d.gLong, g_lat: d.gLat, yaw_dps: d.yaw, track_id: track ? track.id : '', demo: dm,
+                    gps_speed_raw: dm ? null : inputs.v.gpsSpeedRaw, gps_quality_raw: dm ? null : inputs.v.gpsQualityRaw,
                 });
             }
         }, SAMPLE_MS);
@@ -187,7 +189,8 @@ mgu.run({
             return {
                 demo: !!demoWas, page: PAGES[page], visible: ctx.ui.isVisible(SCREEN),
                 poll: Object.assign({ running: !!inputs.poller.timer }, inputs.poller.stats), src: inputs.status(now), ageMs: ages,
-                gps: { fixAgeMs: pos.fixAge(now), heading: pos.heading() }, track: track ? track.id : null,
+                gps: Object.assign({ state: inputs.gpsState(now), fixAgeMs: pos.fixAge(now), heading: pos.heading() }, inputs.gps.state()),
+                track: track ? track.id : null,
                 trailM: Math.round(trail.lengthM()), lapReady: trail.lapReady(), rec: st.on ? { rows: st.rows, kb: Math.round(st.bytes / 1024) } : false,
             };
         });

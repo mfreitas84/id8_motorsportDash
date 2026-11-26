@@ -130,10 +130,23 @@ g_long, g_lat, yaw_dps, track_id, demo`. The newest 30 sessions are kept.
 **Brake:** the car reports "driver braking" (on / off), not pedal travel or pressure. The red bar shows
 how hard from the deceleration (1.3 g = 100 %).
 
+**GPS:** `de.bmw.infotainment.GPSData` · `GPSPositionExtendedCAN`, read once a second. The service
+exists on iDrive 8, but no app reads a position from it yet, so `gps.js` works the position out itself.
+It finds the latitude and longitude fields by name and learns their unit, by checking which candidate
+unit makes GPS distance match the distance the wheels travelled. The map shows what stage it's at:
+
+| Map says | Meaning |
+|---|---|
+| *No GPS on this unit* | The GPSData service is missing |
+| *Waiting for GPS* | No record or no fix yet |
+| *GPS found, no position in it* | The record has no latitude or longitude field. Set Logging = Debug and send the log: it holds the whole record |
+| *GPS: learning its units* | Drive a few hundred metres |
+
+The raw ground speed and fix quality are logged as `gps_speed_raw` and `gps_quality_raw` (their scales
+are unknown). One fix a second is enough for the map, because the dot is moved between fixes from speed
+and yaw. It is not enough for lap timing (CLAUDE.md, Open questions).
+
 **Not wired yet:**
-- **GPS.** No public app reads a position over SOME/IP. I need your unit's catalog to find the
-  service: copy `/etc/oap/someip/someip-interfaces.json` into `reference/` (command above). Until then
-  the map says *No GPS source yet* on the car; the demo has GPS.
 - **Save USB.** Sticks are mounted read-only, so it needs a small root helper (a Store tool). That
   needs one SSH look at how sticks mount first. Until then the button says why it can't run.
 
