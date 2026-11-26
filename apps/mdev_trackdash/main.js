@@ -208,5 +208,6 @@ function brake(d, demo) {
     const fromG = decel === null ? null : Math.min(100, (decel / 1.3) * 100);
     if (d.braking === true) return { pct: Math.max(8, fromG || 0), note: demo ? '' : 'on/off + decel' };
     if (d.braking === false) return { pct: 0, note: demo ? '' : 'on/off + decel' };
-    return { pct: fromG !== null && decel > 0.15 ? fromG : 0, note: 'est. from decel' };
+    if (fromG === null) return { pct: null, note: 'no data' };          // neither the flag nor g: "--", not 0 %
+    return { pct: decel > 0.15 ? fromG : 0, note: 'est. from decel' };
 }
