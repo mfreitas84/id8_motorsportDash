@@ -1,0 +1,9 @@
+# Unix line endings on every OS: the scripts and the app run on the head unit (Linux)
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.wasm binary
+*.pack binary
+*.mgu binary
+*.tgz binary

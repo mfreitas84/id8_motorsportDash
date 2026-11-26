@@ -1,0 +1,36 @@
+{
+  "id": "mdev_quickstart",
+  "title": "Quickstart",
+  "description": "Plumbing check: live rpm, coolant, oil temperature and speed (polled SOME/IP), plus one gated OBD read",
+  "version": "0.1.0",
+  "vendor": "mdev",
+  "loggingId": "MD01",
+  "iconGlyph": "gauge",
+  "mguHmi": ["ID8"],
+
+  "signals": {
+    "de.bmw.infotainment.vehicle.CDS": {
+      "statusEngineSpeed2": "r",
+      "statusEngineTemperature": "r"
+    },
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "statusCarSpeed2": "r"
+    },
+    "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
+      "_instances": "SystemFunctionsInternalTasuInst1",
+      "_methods": ["sendTasuRequest"],
+      "_broadcasts": ["sendTasuResponse"]
+    }
+  },
+
+  "screens": [
+    { "name": "MAIN", "kind": "canvas", "title": "Quickstart",
+      "buttons": [["BTN_SETTINGS", "Settings"]] }
+  ],
+
+  "settings": [
+    { "key": "obdIat", "label": "OBD demo: intake air temp (DME)", "type": "bool", "default": false },
+    { "key": "demo", "label": "Demo data", "type": "choice", "default": "auto",
+      "options": [["auto", "Auto (until the car answers)"], ["on", "On"], ["off", "Off"]] }
+  ]
+}
