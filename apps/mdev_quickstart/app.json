@@ -2,7 +2,7 @@
   "id": "mdev_quickstart",
   "title": "Quickstart",
   "description": "Plumbing check: live rpm, coolant, oil temperature and speed (polled SOME/IP), plus one gated OBD read",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "vendor": "mdev",
   "loggingId": "MD01",
   "iconGlyph": "gauge",

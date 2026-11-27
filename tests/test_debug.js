@@ -122,6 +122,18 @@ test('a full file rolls over and only the newest 5 are kept', async () => {
     dbg.apply('normal');
 });
 
+test('the QR log export reads the debug file (Settings > Debug log (QR))', async () => {
+    const { logText } = require('../kit/runtime/qrlog');
+    const dir = tmp(), ctx = fakeCtx(dir, 'debug'), dbg = new Debug(ctx);
+    dbg.startup({ poller: 'car' });
+    dbg.raw('CDS.statusEngineSpeed2', { actualValueRPMEngineCrankshaft: 3200 });
+    await sleep(1200);
+    const text = logText(path.join(dir, 'debug', debugFiles(dir)[0]));
+    assert.ok(/ START .*"app":"mdev_test"/.test(text), 'start line in the QR text: ' + JSON.stringify(text));
+    assert.ok(/ RAW .*3200/.test(text), 'raw line in the QR text');
+    dbg.apply('normal');
+});
+
 test('fmt: errors with stack, long arrays cut, plain values', () => {
     assert.ok(fmt(new Error('boom')).indexOf('boom') >= 0);
     assert.ok(fmt({ a: new Array(100).fill(1) }).indexOf('...(100)') >= 0);

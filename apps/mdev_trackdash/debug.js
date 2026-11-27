@@ -151,14 +151,14 @@ class Debug {
 
     _write(tag, msg) {
         if (!this.file) return;
-        const line = new Date().toISOString().slice(11, 23) + ' ' + tag + ' ' + msg + '\n';
+        const line = new Date().toISOString() + ' ' + tag + ' ' + msg + '\n';
         if (this.bytes + line.length > MAX_BYTES) this._open();
         this.bytes += line.length;
         fs.appendFile(this.file, line, () => {});
     }
 
     _writeSync(tag, msg) {
-        try { fs.appendFileSync(this.file, new Date().toISOString().slice(11, 23) + ' ' + tag + ' ' + msg + '\n'); } catch (e) { /* nothing */ }
+        try { fs.appendFileSync(this.file, new Date().toISOString() + ' ' + tag + ' ' + msg + '\n'); } catch (e) { /* nothing */ }
     }
 
     _flushRaw() {
