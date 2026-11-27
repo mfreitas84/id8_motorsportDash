@@ -34,7 +34,7 @@ const MAX_BYTES = 2 * 1024 * 1024;
 const KEEP_FILES = 5;
 const AUTO_OFF_MS = 2 * 60 * 60 * 1000;
 const RAW_MS = 1000, STATS_MS = 5000;
-const RAW_REPEAT_MS = 30000, LONG_MS = 10000, RAW_CHUNK = 220;   // raw lines: see _flushRaw
+const RAW_REPEAT_MS = 30000, RAW_CHUNK = 220;   // raw lines: see _flushRaw
 
 class Debug {
     constructor(ctx) {
@@ -214,7 +214,7 @@ class Debug {
      * Raw values: one line per signal, so the QR log (which cuts a line at 300 characters) keeps them whole.
      * A signal is written when it changed, else every RAW_REPEAT_MS; its checksum / message counter (cRC..., alive...)
      * are left out (they change every message and hide the values). A record too long for one line goes out in parts,
-     * "RAW <name> [i/n] <text>" (join the parts in order), at most every LONG_MS.
+     * "RAW <name> [i/n] <text>" (join the parts in order).
      */
     _flushRaw() {
         const now = Date.now();
@@ -223,7 +223,6 @@ class Debug {
             const last = this.rawWritten[n];
             const long = text.length > RAW_CHUNK;
             if (last && last.text === text && now - last.t < RAW_REPEAT_MS) return;
-            if (last && long && now - last.t < LONG_MS) return;
             this.rawWritten[n] = { text, t: now };
             if (!long) { this._write('RAW', n + ' ' + text); return; }
             const parts = [];
