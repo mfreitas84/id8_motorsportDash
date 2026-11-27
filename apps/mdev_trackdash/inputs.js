@@ -86,7 +86,7 @@ class Inputs {
         this.log = ctx.log;
         this.v = { rpm: null, speed: null, coolant: null, oil: null, gLong: null, gLat: null, yaw: null,
             throttle: null, steer: null, braking: null, fix: null, fixT: 0, gpsSpeedRaw: null, gpsQualityRaw: null,
-            throttleRaw: null, steerRaw: null, steerRawNc: null };   // unscaled, while CALIBRATED says no
+            throttleRaw: null, throttleVirtRaw: null, throttleGradRaw: null, steerRaw: null, steerRawNc: null };   // unscaled, while CALIBRATED says no
         this.at = {};
         Object.keys(this.v).forEach((k) => { this.at[k] = 0; });
         this.raw = { braking: [] };                    // first few raw brake values seen, for the log
@@ -135,7 +135,13 @@ class Inputs {
             const alt = Object.keys(v).find((n) => /angle|pedal/i.test(n) && !/crc|alive|qualifier/i.test(n) && num(v[n]) !== null);
             return alt ? num(v[alt]) : null;
         };
-        await watch(PEDAL, { AngleAcceleratorPedal: (v) => { this._put('throttleRaw', rawOf(v, 'actualValueAngleAcceleratorPedal')); this._put('throttle', SC.throttle(v)); } });
+        await watch(PEDAL, { AngleAcceleratorPedal: (v) => {
+            this._put('throttleRaw', rawOf(v, 'actualValueAngleAcceleratorPedal'));
+            // the record's other two pedal numbers, logged while the pedal signal is being checked
+            this._put('throttleVirtRaw', num(v && v.actualValueAngleAcceleratorPedalVirtual));
+            this._put('throttleGradRaw', num(v && v.gradientActualValueAngleAcceleratorPedal));
+            this._put('throttle', SC.throttle(v));
+        } });
         // the two steering messages are kept apart (raw), to see whether they agree
         await watch(STEER, {
             // NoCRC first (no byte swap); the CRC one fills in when the NoCRC one goes quiet
