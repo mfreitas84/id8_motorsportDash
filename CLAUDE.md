@@ -106,8 +106,10 @@ Glanceable while driving. Priorities for track engine survival:
   - Track MAP: 1 Hz is enough — Track Dash dead-reckons the dot at 10 Hz from speed + yaw between fixes.
   - Lap / sector TIMING: 1 Hz is anchor-grade only. Keep lap timing out until decided: external ≥10 Hz
     GPS or beacon, or start/finish crossing on the dead-reckoned position (~±0.1–0.3 s).
-  - Field discovery: Track Dash polls the record at 1 Hz; Logging = Debug writes it raw. `gps.js` looks
-    for lat/lon by name and learns the scale against wheel speed; confirm with a real debug log.
+  - **Checked on the car (2026-11-27): `GPSPositionExtendedCAN` has NO lat/lon.** The whole record is
+    `{statusHeadingGPSCAN: 200, statusHeightGPSCAN: 65535, statusQualityPositionGPSCAN: 32, speedGPSCAN: 32768}`
+    (parked: speed 32768 = 0, so offset 32768; heading / speed scales unknown). Next: other GPSData members in the
+    unit's catalog (`/etc/oap/someip/someip-interfaces.json`), the navigation's position, or an external GPS.
 - Confirm which SOME/IP getters actually return live values on the S58 (cardash CAL notes are guesses).
 
 ## Storage & USB (learned from oap-driverecorder-next 2.5.2)

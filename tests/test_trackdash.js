@@ -178,8 +178,16 @@ test('raw -> real: rpm, speed, temps, g, yaw, throttle, steering, invalid values
     assert.ok(Math.abs(SC.yaw({ yawVelocityVehicle: 32768 })) < 1e-9);                            // 0 deg/s
     assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 4000 }), 100);
     assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 5000 }), null);           // 125 %: no data
-    assert.ok(Math.abs(SC.steer({ actualValueSteeringAngleDriver: 65536 - 2048 }) + 90.0096) < 1e-3);   // signed: -90 deg
-    assert.strictEqual(SC.steer({ actualValueSteeringAngleDriver: 30000 }), null);              // 1318 deg: no data
+    // values from the G87 (lock-to-lock, parked): centre 32744, full left 41591, full right 23989
+    assert.ok(Math.abs(SC.steer({ actualValueSteeringAngleDriver: 32744 })) < 1.1, 'centre');
+    assert.ok(SC.steer({ actualValueSteeringAngleDriver: 41591 }) > 380, 'full left: + about 388 deg');
+    assert.ok(SC.steer({ actualValueSteeringAngleDriver: 23989 }) < -380, 'full right');
+    assert.strictEqual(SC.steer({ actualValueSteeringAngleDriver: 65535 }), null);
+    // the CRC message: the same numbers, bytes swapped (seen on the car: 59519 = 0xE87F <-> 32744 = 0x7FE8)
+    assert.ok(Math.abs(SC.steerCrc({ actualValueSteeringAngleDriver: 59519 }) - SC.steer({ actualValueSteeringAngleDriver: 32744 })) < 1e-9);
+    assert.ok(Math.abs(SC.steerCrc({ actualValueSteeringAngleDriver: 46685 }) - SC.steer({ actualValueSteeringAngleDriver: 23990 })) < 1e-9);
+    assert.strictEqual(SC.braking({ statusBrakingDriver: 16 }), false, 'G87 released');
+    assert.strictEqual(SC.braking({ statusBrakingDriver: 23 }), true, 'G87 pressed');
 });
 
 test('statusBrakingDriver: numbers and German / English enum names', () => {

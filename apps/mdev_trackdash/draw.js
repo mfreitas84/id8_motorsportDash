@@ -15,7 +15,7 @@ const GREEN = '#2ecc40', RED = '#ff3b30';
 const GPS_TEXT = {
     none: ['No GPS on this unit', 'the GPSData service is missing'],
     nodata: ['Waiting for GPS', 'no fix yet'],
-    nofields: ['GPS found, no position in it', 'set Logging = Debug and send the log'],
+    nofields: ["The car's GPS record has no position", 'heading and speed only: the map needs another source'],
     calibrating: ['GPS: learning its units', 'drive a few hundred metres'],
 };
 const MAX_TRAIL_SEG = 600;

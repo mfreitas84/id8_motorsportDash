@@ -43,9 +43,19 @@ const GPS_MS = 1000;
 const num = (x) => (typeof x === 'number' && isFinite(x) ? x : null);
 const lin = (raw, k, o, bad) => { const r = num(raw); return r === null || r === bad ? null : r * k + (o || 0); };
 const G0 = 9.80665;
-// Scalings checked on a car (G87 M2, 2026-11-27): throttle and steering are NOT yet (0.025 gave 6 % at rest and
-// no 100 % at full pedal; steering jumped side to side). Until they are, the dash shows their raw numbers.
-const CALIBRATED = { throttle: false, steer: false };
+// Checked on the car (G87 M2, 2026-11-27, debug log of a parked lock-to-lock test):
+//  - steering: centre 32768, + = left, 0.04395 deg a count (full lock about +-8800 counts = +-387 deg). The NoCRC
+//    message has it as is; the CRC message ("ActualSteeringAngleDriver") has the same number with its two bytes
+//    swapped (0x7FE8 -> 0xE87F), which is what made the bar jump side to side.
+//  - brake: statusBrakingDriver 16 = released, 23 = pressed (low three bits set).
+//  - throttle: NOT yet (didn't move with the engine off); until it is, the dash shows its raw number.
+const CALIBRATED = { throttle: false, steer: true };
+const swap16 = (r) => ((r & 0xff) << 8) | ((r >> 8) & 0xff);
+const steerDeg = (r) => {
+    if (r === null || r === 65535) return null;
+    const d = (r - 32768) * 0.04395;
+    return Math.abs(d) > 900 ? null : d;
+};
 
 const SC = {
     rpm: (v) => lin(v && v.actualValueRPMEngineCrankshaft, 0.25, 0, 65535),
@@ -56,18 +66,15 @@ const SC = {
     gLat: (v) => { const a = lin(v && v.lateralAccelerationCentreOfGravity, 0.002, -65, 65535); return a === null ? null : a / G0; },
     yaw: (v) => lin(v && v.yawVelocityVehicle, 0.005, -163.84, 65535),
     throttle: (v) => { const p = lin(v && v.actualValueAngleAcceleratorPedal, 0.025, 0); return p === null || p < -2 || p > 102 ? null : Math.max(0, Math.min(100, p)); },
-    steer: (v) => {
-        let r = num(v && v.actualValueSteeringAngleDriver);
-        if (r === null) return null;
-        if (r >= 32768) r -= 65536;                    // signed 16 bit
-        const d = r * 0.04395;
-        return Math.abs(d) > 900 ? null : d;
-    },
-    // statusBrakingDriver: an enum; the kit's demo sends 1 for braking. Names are logged once (raw below).
+    // steering, the NoCRC message: offset binary, + = left
+    steer: (v) => steerDeg(num(v && v.actualValueSteeringAngleDriver)),
+    // the CRC message: the same, bytes swapped
+    steerCrc: (v) => { const r = num(v && v.actualValueSteeringAngleDriver); return r === null || r === 65535 ? null : steerDeg(swap16(r)); },
+    // statusBrakingDriver: the G87 sends 16 released / 23 pressed (the kit's demo 0 / 1): pressed = any of the low 3 bits
     braking: (v) => {
         const r = v && v.statusBrakingDriver;
         if (r === undefined || r === null) return null;
-        if (typeof r === 'number') return r === 1;
+        if (typeof r === 'number') return (r & 7) !== 0;
         return /BETAETIGT|ACTIVE|BRAK/i.test(String(r)) && !/NICHT|NOT|INAKTIV/i.test(String(r));
     },
 };
@@ -130,10 +137,11 @@ class Inputs {
         await watch(PEDAL, { AngleAcceleratorPedal: (v) => { this._put('throttleRaw', rawOf(v, 'actualValueAngleAcceleratorPedal')); this._put('throttle', SC.throttle(v)); } });
         // the two steering messages are kept apart (raw), to see whether they agree
         await watch(STEER, {
-            ActualSteeringAngleDriver: (v) => { this._put('steerRaw', rawOf(v, 'actualValueSteeringAngleDriver')); this._put('steer', SC.steer(v)); },
-            actualSteeringAngleDriverNoCRC: (v) => {
-                this._put('steerRawNc', rawOf(v, 'actualValueSteeringAngleDriver'));
-                if (!this.at.steer || Date.now() - this.at.steer > 500) this._put('steer', SC.steer(v));
+            // NoCRC first (no byte swap); the CRC one fills in when the NoCRC one goes quiet
+            actualSteeringAngleDriverNoCRC: (v) => { this._put('steerRawNc', rawOf(v, 'actualValueSteeringAngleDriver')); this._put('steer', SC.steer(v)); this.at.steerNc = Date.now(); },
+            ActualSteeringAngleDriver: (v) => {
+                this._put('steerRaw', rawOf(v, 'actualValueSteeringAngleDriver'));
+                if (!this.at.steerNc || Date.now() - this.at.steerNc > 500) this._put('steer', SC.steerCrc(v));
             },
         });
         await watch(DSC, {

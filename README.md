@@ -139,17 +139,17 @@ unit makes GPS distance match the distance the wheels travelled. The map shows w
 |---|---|
 | *No GPS on this unit* | The GPSData service is missing |
 | *Waiting for GPS* | No record or no fix yet |
-| *GPS found, no position in it* | The record has no latitude or longitude field. Set Logging = Debug and send the log: it holds the whole record |
+| *The car's GPS record has no position* | What the G87 sends: `GPSPositionExtendedCAN` holds only heading, height, fix quality and ground speed, no latitude / longitude. The map needs another source (see CLAUDE.md, Open questions) |
 | *GPS: learning its units* | Drive a few hundred metres |
 
 The raw ground speed and fix quality are logged as `gps_speed_raw` and `gps_quality_raw` (their scales
 are unknown). One fix a second is enough for the map, because the dot is moved between fixes from speed
 and yaw. It is not enough for lap timing (CLAUDE.md, Open questions).
 
-**Throttle and steering scalings are not confirmed yet** (on the car 0.025 gave 6 % at rest and steering jumped side
-to side). Until they are, those two bars show **raw** and the car's own number; the CSV logs `throttle_raw`,
-`steer_raw` and `steer_raw_nocrc`. Calibrate: parked, Logging = Debug, wheel straight / full left / straight / full
-right, pedal 0 / half / full / 0, a few seconds each, then send the raw lines.
+**Calibrated on the G87 (2026-11-27):** steering = (raw - 32768) x 0.04395 deg, + = left, about +-387 deg at full
+lock; the NoCRC message carries it as is, the CRC message with its two bytes swapped. Brake flag 16 = released,
+23 = pressed. **Throttle not yet** (it didn't change with the engine off): its bar shows **raw** and the car's own
+number until a run with the engine on. The CSV logs `throttle_raw`, `steer_raw` and `steer_raw_nocrc`.
 
 **Wide screen:** on iDrive 8 the dash also uses the screen's sides (the kit's page is narrower than the screen).
 
