@@ -169,6 +169,8 @@ and yaw. It is not enough for lap timing (CLAUDE.md, Open questions).
 | **Debug** | Normal, plus `data/debug/<YYYYMMDD-HHMMSS>.log`: the start state (settings, every SOME/IP source and whether it works), the **raw value of every field once a second** exactly as the car sent it, counters every 5 s, every button, screen and setting change, OBD requests and replies, and errors with their stack. 2 MB a file, newest 5 kept. **Back to Normal by itself after 2 hours** (counted across restarts) |
 | **Off** | No log files at all. The existing app and debug logs are deleted, and the kit's own file log is switched off (a one-line patch, listed in `kit/UPSTREAM.md`). Your REC session CSVs are kept |
 
+**Settings → Delete debug logs** shows how many debug files there are and deletes them after a confirm (the app log and REC session CSVs stay). With Logging = Debug a fresh file starts at once.
+
 To get a debug log off the car without SSH: **Settings → Debug log (QR)** shows it as QR codes. Photograph
 them, and `python kit/tools/qrlog_decode.py <photos>` turns them back into text. Over SSH it's in
 `/var/opt/public/oap/oap_<uid>/data/debug/`.

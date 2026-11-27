@@ -104,6 +104,42 @@ class Debug {
             value: () => (this.file ? path.basename(this.file) + '  ' + Math.round(this.bytes / 1024) + ' KB' : 'none (Logging = Debug)'),
             open: () => qrLogSheet({ file: this.file || this._newest(), app: this.id + '-debug', version: this.version }),
         });
+        let cardSheet;
+        try { cardSheet = require('./kit/sheet').cardSheet; } catch (e) { return; }
+        this.ctx.settingsRow({
+            label: 'Delete debug logs',
+            value: () => { const u = this.usage(); return u.files ? u.files + ' file(s), ' + Math.round(u.bytes / 1024) + ' KB' : 'none'; },
+            open: () => cardSheet({
+                title: 'Debug logs',
+                heading: 'Delete debug logs?',
+                subtitle: 'data/debug/ of this app',
+                color: '#ff3b30',
+                rows: () => { const u = this.usage(); return [['Files', String(u.files)], ['Size', Math.round(u.bytes / 1024) + ' KB']]; },
+                note: 'The app log and REC session logs are kept. With Logging = Debug a new file starts at once.',
+                actions: [{ label: 'Delete', color: '#ff3b30', primary: true, run: () => { this.clear(); return 'close'; } }],
+            }),
+        });
+    }
+
+    /** Debug files on disk: { files, bytes }. */
+    usage() {
+        let files = 0, bytes = 0;
+        try {
+            fs.readdirSync(this.dir).filter((n) => n.endsWith('.log')).forEach((n) => {
+                try { bytes += fs.statSync(path.join(this.dir, n)).size; files++; } catch (e) { /* gone */ }
+            });
+        } catch (e) { /* no folder */ }
+        return { files, bytes };
+    }
+
+    /** Delete every debug file (Settings > Delete debug logs). While Debug is on, a fresh file starts. */
+    clear() {
+        const n = this.usage().files;
+        try { fs.readdirSync(this.dir).filter((f) => f.endsWith('.log')).forEach((f) => { try { fs.unlinkSync(path.join(this.dir, f)); } catch (e) { /* gone */ } }); } catch (e) { /* none */ }
+        this.file = null;
+        if (this.on) { this._open(); this._write('DEBUG', 'logs deleted (' + n + ' file(s)), new file'); }
+        this.ctx.log.info('debug: deleted ' + n + ' debug log(s)');
+        return n;
     }
 
     /* ---------------- internals ---------------- */

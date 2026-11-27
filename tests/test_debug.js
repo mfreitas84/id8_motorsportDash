@@ -134,6 +134,22 @@ test('the QR log export reads the debug file (Settings > Debug log (QR))', async
     dbg.apply('normal');
 });
 
+test('Delete debug logs: files gone, Debug keeps logging into a fresh file', async () => {
+    const dir = tmp(), ctx = fakeCtx(dir, 'debug'), dbg = new Debug(ctx);
+    dbg.event('one');
+    await sleep(100);
+    assert.strictEqual(dbg.usage().files, 1);
+    assert.strictEqual(dbg.clear(), 1);
+    await sleep(100);
+    const left = debugFiles(dir);
+    assert.strictEqual(left.length, 1, 'a fresh file');
+    assert.ok(/logs deleted/.test(fs.readFileSync(path.join(dir, 'debug', left[0]), 'utf8')));
+    assert.ok(!/ EVENT one/.test(fs.readFileSync(path.join(dir, 'debug', left[0]), 'utf8')), 'old lines gone');
+    dbg.apply('normal');
+    dbg.clear();
+    assert.strictEqual(debugFiles(dir).length, 0, 'Normal: nothing left');
+});
+
 test('fmt: errors with stack, long arrays cut, plain values', () => {
     assert.ok(fmt(new Error('boom')).indexOf('boom') >= 0);
     assert.ok(fmt({ a: new Array(100).fill(1) }).indexOf('...(100)') >= 0);
