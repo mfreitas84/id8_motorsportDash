@@ -48,8 +48,9 @@ const G0 = 9.80665;
 //    message has it as is; the CRC message ("ActualSteeringAngleDriver") has the same number with its two bytes
 //    swapped (0x7FE8 -> 0xE87F), which is what made the bar jump side to side.
 //  - brake: statusBrakingDriver 16 = released, 23 = pressed (low three bits set).
-//  - throttle: NOT yet (didn't move with the engine off); until it is, the dash shows its raw number.
-const CALIBRATED = { throttle: false, steer: true };
+//  - throttle (engine running, video of 0-100 sweeps): raw 0 released ... 4089 floored (kickdown), so 0.025 % a
+//    count is right; the old limit of 102 % threw full pedal away. Over 100 % = kickdown, shown as 100.
+const CALIBRATED = { throttle: true, steer: true };
 const swap16 = (r) => ((r & 0xff) << 8) | ((r >> 8) & 0xff);
 const steerDeg = (r) => {
     if (r === null || r === 65535) return null;
@@ -65,7 +66,7 @@ const SC = {
     gLong: (v) => { const a = lin(v && v.longitudinalAccelerationCentreOfGravity, 0.002, -65, 65535); return a === null ? null : a / G0; },
     gLat: (v) => { const a = lin(v && v.lateralAccelerationCentreOfGravity, 0.002, -65, 65535); return a === null ? null : a / G0; },
     yaw: (v) => lin(v && v.yawVelocityVehicle, 0.005, -163.84, 65535),
-    throttle: (v) => { const p = lin(v && v.actualValueAngleAcceleratorPedal, 0.025, 0); return p === null || p < -2 || p > 102 ? null : Math.max(0, Math.min(100, p)); },
+    throttle: (v) => { const p = lin(v && v.actualValueAngleAcceleratorPedal, 0.025, 0, 65535); return p === null || p < -2 || p > 110 ? null : Math.max(0, Math.min(100, p)); },
     // steering, the NoCRC message: offset binary, + = left
     steer: (v) => steerDeg(num(v && v.actualValueSteeringAngleDriver)),
     // the CRC message: the same, bytes swapped

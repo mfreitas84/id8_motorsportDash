@@ -177,6 +177,8 @@ test('raw -> real: rpm, speed, temps, g, yaw, throttle, steering, invalid values
     assert.ok(Math.abs(SC.gLong({ longitudinalAccelerationCentreOfGravity: 32500 })) < 1e-9);     // 0 m/s^2
     assert.ok(Math.abs(SC.yaw({ yawVelocityVehicle: 32768 })) < 1e-9);                            // 0 deg/s
     assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 4000 }), 100);
+    assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 4089 }), 100);            // G87 full pedal / kickdown (102 %)
+    assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 0 }), 0);
     assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 5000 }), null);           // 125 %: no data
     // values from the G87 (lock-to-lock, parked): centre 32744, full left 41591, full right 23989
     assert.ok(Math.abs(SC.steer({ actualValueSteeringAngleDriver: 32744 })) < 1.1, 'centre');

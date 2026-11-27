@@ -148,8 +148,8 @@ and yaw. It is not enough for lap timing (CLAUDE.md, Open questions).
 
 **Calibrated on the G87 (2026-11-27):** steering = (raw - 32768) x 0.04395 deg, + = left, about +-387 deg at full
 lock; the NoCRC message carries it as is, the CRC message with its two bytes swapped. Brake flag 16 = released,
-23 = pressed. **Throttle not yet** (it didn't change with the engine off): its bar shows **raw** and the car's own
-number until a run with the engine on. The CSV logs `throttle_raw`, `steer_raw` and `steer_raw_nocrc`.
+23 = pressed. Throttle = raw x 0.025 % (0 released, 4089 at the floor / kickdown = 102 %, shown as 100); it only
+moves with the engine running. The CSV logs `throttle_raw`, `steer_raw` and `steer_raw_nocrc`.
 
 **Wide screen:** on iDrive 8 the dash also uses the screen's sides (the kit's page is narrower than the screen).
 
