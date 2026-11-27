@@ -150,6 +150,28 @@ test('Delete debug logs: files gone, Debug keeps logging into a fresh file', asy
     assert.strictEqual(debugFiles(dir).length, 0, 'Normal: nothing left');
 });
 
+test('raw lines: one per field, only on change, no checksum / counter, long records in parts that survive the QR log', async () => {
+    const { logText } = require('../kit/runtime/qrlog');
+    const dir = tmp(), ctx = fakeCtx(dir, 'debug'), dbg = new Debug(ctx);
+    const gps = {};
+    for (let i = 0; i < 30; i++) gps['memberWithALongName' + i] = 123456 + i;
+    dbg.raw('DSC.StabilizationManagement', { cRCStatusStabilisationDSC: 86, aliveStatusStabilisationDSC: 5, statusBrakingDriver: 16 });
+    dbg.raw('GPSData.GPSPositionExtendedCAN', gps);
+    await sleep(1100);
+    dbg.raw('DSC.StabilizationManagement', { cRCStatusStabilisationDSC: 63, aliveStatusStabilisationDSC: 1, statusBrakingDriver: 16 });   // only the counter changed
+    await sleep(1100);
+    const text = fs.readFileSync(path.join(dir, 'debug', debugFiles(dir)[0]), 'utf8');
+    const dsc = text.split('\n').filter((l) => / RAW DSC\./.test(l));
+    assert.strictEqual(dsc.length, 1, 'unchanged value not written again: ' + dsc.join(' | '));
+    assert.ok(/"statusBrakingDriver":16/.test(dsc[0]) && !/cRC|alive/.test(dsc[0]), 'counter fields left out');
+    const qr = logText(path.join(dir, 'debug', debugFiles(dir)[0]));
+    const parts = qr.split('\n').filter((l) => / RAW GPSData\.GPSPositionExtendedCAN \[\d+\/\d+\] /.test(l));
+    assert.ok(parts.length > 1, 'long record split');
+    const joined = parts.map((l) => l.replace(/^.* \[\d+\/\d+\] /, '')).join('');
+    assert.deepStrictEqual(JSON.parse(joined), gps, 'parts join back to the whole record');
+    dbg.apply('normal');
+});
+
 test('fmt: errors with stack, long arrays cut, plain values', () => {
     assert.ok(fmt(new Error('boom')).indexOf('boom') >= 0);
     assert.ok(fmt({ a: new Array(100).fill(1) }).indexOf('...(100)') >= 0);

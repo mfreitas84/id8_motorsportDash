@@ -25,7 +25,7 @@ const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const geo = require('./geo');
 const draw = require('./draw');
-const { Inputs } = require('./inputs');
+const { Inputs, CALIBRATED } = require('./inputs');
 const { Position } = require('./position');
 const { TrackStore, TrailRecorder } = require('./tracks');
 const { SessionLogger } = require('./logger');
@@ -41,7 +41,8 @@ const TAB_REC = 2, TAB_USB = 3;
 
 const COLUMNS = ['t_iso', 't_ms', 'lat', 'lon', 'gps_lat', 'gps_lon', 'gps_age_ms', 'heading_deg', 'speed_kmh', 'rpm',
     'coolant_c', 'oil_c', 'throttle_pct', 'brake_on', 'brake_pct', 'steer_deg', 'g_long', 'g_lat', 'yaw_dps', 'track_id', 'demo',
-    'gps_speed_raw', 'gps_quality_raw'];      // GPSData's ground speed and fix quality, unscaled (scales unknown)
+    'gps_speed_raw', 'gps_quality_raw',       // GPSData's ground speed and fix quality, unscaled (scales unknown)
+    'throttle_raw', 'steer_raw', 'steer_raw_nocrc'];   // unscaled, until their scalings are confirmed (inputs.js CALIBRATED)
 
 mgu.run({
     async start(ctx) {
@@ -153,6 +154,7 @@ mgu.run({
                     throttle_pct: d.throttle, brake_on: d.braking, brake_pct: b.pct, steer_deg: d.steer,
                     g_long: d.gLong, g_lat: d.gLat, yaw_dps: d.yaw, track_id: track ? track.id : '', demo: dm,
                     gps_speed_raw: dm ? null : inputs.v.gpsSpeedRaw, gps_quality_raw: dm ? null : inputs.v.gpsQualityRaw,
+                    throttle_raw: dm ? null : inputs.v.throttleRaw, steer_raw: dm ? null : inputs.v.steerRaw, steer_raw_nocrc: dm ? null : inputs.v.steerRawNc,
                 });
             }
         }, SAMPLE_MS);
@@ -174,6 +176,8 @@ mgu.run({
                 gpsState: dm ? 'ok' : src.gps, track, trail, lapReady: trail.lapReady(), store: store(), selId,
                 mapTitle: track ? track.name : 'Track',
                 brakePct: b.pct, brakeNote: b.note,
+                // not calibrated yet: the bars show the raw number instead of a wrong % / angle
+                raw: dm ? null : { throttle: CALIBRATED.throttle ? null : inputs.v.throttleRaw, steer: CALIBRATED.steer ? null : inputs.v.steerRaw },
             };
             if (page === 0) draw.dash(cv, t, m); else draw.tracks(cv, t, m, act);
             if (now - toastT < 2500) draw.toast(cv, t, toastMsg);

@@ -43,6 +43,10 @@ const GPS_MS = 1000;
 const num = (x) => (typeof x === 'number' && isFinite(x) ? x : null);
 const lin = (raw, k, o, bad) => { const r = num(raw); return r === null || r === bad ? null : r * k + (o || 0); };
 const G0 = 9.80665;
+// Scalings checked on a car (G87 M2, 2026-11-27): throttle and steering are NOT yet (0.025 gave 6 % at rest and
+// no 100 % at full pedal; steering jumped side to side). Until they are, the dash shows their raw numbers.
+const CALIBRATED = { throttle: false, steer: false };
+
 const SC = {
     rpm: (v) => lin(v && v.actualValueRPMEngineCrankshaft, 0.25, 0, 65535),
     speed: (v) => lin(v && v.speedVehicleCentreOfGravity, 0.015625, 0, 65535),
@@ -73,7 +77,8 @@ class Inputs {
         this.ctx = ctx;
         this.log = ctx.log;
         this.v = { rpm: null, speed: null, coolant: null, oil: null, gLong: null, gLat: null, yaw: null,
-            throttle: null, steer: null, braking: null, fix: null, fixT: 0, gpsSpeedRaw: null, gpsQualityRaw: null };
+            throttle: null, steer: null, braking: null, fix: null, fixT: 0, gpsSpeedRaw: null, gpsQualityRaw: null,
+            throttleRaw: null, steerRaw: null, steerRawNc: null };   // unscaled, while CALIBRATED says no
         this.at = {};
         Object.keys(this.v).forEach((k) => { this.at[k] = 0; });
         this.raw = { braking: [] };                    // first few raw brake values seen, for the log
@@ -115,10 +120,21 @@ class Inputs {
                 this.log.info('inputs: ' + iface.split('.').pop() + (s.error ? ' error: ' + s.error : ' subscribed'));
             } catch (e) { this.log.warn('inputs: ' + iface + ': ' + e); }
         };
-        await watch(PEDAL, { AngleAcceleratorPedal: put('throttle', SC.throttle) });
+        // the named member, else (a record shaped otherwise, e.g. the NoCRC one) its first angle / pedal number
+        const rawOf = (v, k) => {
+            if (!v || typeof v !== 'object') return num(v);
+            if (k in v) return num(v[k]);
+            const alt = Object.keys(v).find((n) => /angle|pedal/i.test(n) && !/crc|alive|qualifier/i.test(n) && num(v[n]) !== null);
+            return alt ? num(v[alt]) : null;
+        };
+        await watch(PEDAL, { AngleAcceleratorPedal: (v) => { this._put('throttleRaw', rawOf(v, 'actualValueAngleAcceleratorPedal')); this._put('throttle', SC.throttle(v)); } });
+        // the two steering messages are kept apart (raw), to see whether they agree
         await watch(STEER, {
-            ActualSteeringAngleDriver: put('steer', SC.steer),
-            actualSteeringAngleDriverNoCRC: (v) => { if (!this.at.steer || Date.now() - this.at.steer > 500) this._put('steer', SC.steer(v)); },
+            ActualSteeringAngleDriver: (v) => { this._put('steerRaw', rawOf(v, 'actualValueSteeringAngleDriver')); this._put('steer', SC.steer(v)); },
+            actualSteeringAngleDriverNoCRC: (v) => {
+                this._put('steerRawNc', rawOf(v, 'actualValueSteeringAngleDriver'));
+                if (!this.at.steer || Date.now() - this.at.steer > 500) this._put('steer', SC.steer(v));
+            },
         });
         await watch(DSC, {
             StabilizationManagement: (v) => {
@@ -185,4 +201,4 @@ class Inputs {
     }
 }
 
-module.exports = { Inputs, SC };
+module.exports = { Inputs, SC, CALIBRATED };

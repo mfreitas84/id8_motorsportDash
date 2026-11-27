@@ -125,7 +125,7 @@ moves at 10 Hz between GPS fixes, from speed and yaw rate (`position.js`).
 **Log:** REC LOG writes `data/logs/<YYYYMMDD-HHMMSS>.csv` at 10 rows a second, and keeps recording with
 the screen hidden. Columns: `t_iso, t_ms, lat, lon` (smoothed), `gps_lat, gps_lon, gps_age_ms` (the raw
 fix), `heading_deg, speed_kmh, rpm, coolant_c, oil_c, throttle_pct, brake_on, brake_pct, steer_deg,
-g_long, g_lat, yaw_dps, track_id, demo`. The newest 30 sessions are kept.
+g_long, g_lat, yaw_dps, track_id, demo, gps_speed_raw, gps_quality_raw, throttle_raw, steer_raw, steer_raw_nocrc`. The newest 30 sessions are kept.
 
 **Brake:** the car reports "driver braking" (on / off), not pedal travel or pressure. The red bar shows
 how hard from the deceleration (1.3 g = 100 %).
@@ -145,6 +145,13 @@ unit makes GPS distance match the distance the wheels travelled. The map shows w
 The raw ground speed and fix quality are logged as `gps_speed_raw` and `gps_quality_raw` (their scales
 are unknown). One fix a second is enough for the map, because the dot is moved between fixes from speed
 and yaw. It is not enough for lap timing (CLAUDE.md, Open questions).
+
+**Throttle and steering scalings are not confirmed yet** (on the car 0.025 gave 6 % at rest and steering jumped side
+to side). Until they are, those two bars show **raw** and the car's own number; the CSV logs `throttle_raw`,
+`steer_raw` and `steer_raw_nocrc`. Calibrate: parked, Logging = Debug, wheel straight / full left / straight / full
+right, pedal 0 / half / full / 0, a few seconds each, then send the raw lines.
+
+**Wide screen:** on iDrive 8 the dash also uses the screen's sides (the kit's page is narrower than the screen).
 
 **Not wired yet:**
 - **Save USB.** Sticks are mounted read-only, so it needs a small root helper (a Store tool). That
@@ -166,7 +173,7 @@ and yaw. It is not enough for lap timing (CLAUDE.md, Open questions).
 | Mode | What is written |
 |---|---|
 | **Normal** (default) | The kit's small app log `data/<id>.log` (two files of 256 KB at most) |
-| **Debug** | Normal, plus `data/debug/<YYYYMMDD-HHMMSS>.log`: the start state (settings, every SOME/IP source and whether it works), the **raw value of every field once a second** exactly as the car sent it, counters every 5 s, every button, screen and setting change, OBD requests and replies, and errors with their stack. 2 MB a file, newest 5 kept. **Back to Normal by itself after 2 hours** (counted across restarts) |
+| **Debug** | Normal, plus `data/debug/<YYYYMMDD-HHMMSS>.log`: the start state (settings, every SOME/IP source and whether it works), the **raw value of every field**, unscaled, one line per field, written when it changes (or every 30 s), checksum / counter members left out, long records as numbered parts `RAW <name> [i/n] ...`, counters every 5 s, every button, screen and setting change, OBD requests and replies, and errors with their stack. 2 MB a file, newest 5 kept. **Back to Normal by itself after 2 hours** (counted across restarts) |
 | **Off** | No log files at all. The existing app and debug logs are deleted, and the kit's own file log is switched off (a one-line patch, listed in `kit/UPSTREAM.md`). Your REC session CSVs are kept |
 
 **Settings → Delete debug logs** shows how many debug files there are and deletes them after a confirm (the app log and REC session CSVs stay). With Logging = Debug a fresh file starts at once.

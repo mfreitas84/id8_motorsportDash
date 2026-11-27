@@ -95,18 +95,29 @@ function carDot(cv, t, p) {
 /* ---------------- driver inputs ---------------- */
 
 /** A horizontal bar, 0..100 %, filled in colour c. */
-function pctBar(cv, t, x, y, w, h, label, pct, c, note) {
-    cv.text(label, x, y - 12, 22, t.dim, { font: 'bold', spacing: 1.5 });
-    if (note) cv.text(note, x + w, y - 12, 18, t.dim, { align: 'right' });
+function pctBar(cv, t, x, y, w, h, label, pct, c, note, raw) {
+    const ls = Math.round(h * 0.34);
+    cv.text(label, x, y - 12, ls, t.dim, { font: 'bold', spacing: 1.5 });
+    if (note) cv.text(note, x + w, y - 12, Math.round(ls * 0.82), t.dim, { align: 'right' });
     cv.roundRect(x, y, w, h, 6, G.withAlpha('#ffffff', 0.08));
+    if (isRaw(raw)) { rawText(cv, t, x, y, w, h, raw); return; }
     if (G.isNum(pct) && pct > 0) cv.roundRect(x, y, Math.max(h, (w * Math.min(100, pct)) / 100), h, 6, c);
     cv.text(G.isNum(pct) ? Math.round(pct) + '%' : '--', x + w - 10, y + h * 0.72, h * 0.62, G.isNum(pct) && pct > 55 ? '#000000' : t.text, { align: 'right', font: 'num' });
 }
 
+/** Not calibrated yet (inputs.js CALIBRATED): the car's own number, plainly marked, in place of a wrong % / angle. */
+const isRaw = (raw) => raw !== undefined && raw !== null;
+function rawText(cv, t, x, y, w, h, raw) {
+    cv.text('raw', x + 12, y + h * 0.66, h * 0.32, t.dim);
+    cv.text(String(raw), x + w - 10, y + h * 0.72, h * 0.62, t.text, { align: 'right', font: 'num' });
+}
+
 /** Steering: a centred bar, left of centre = left; full scale = range degrees. */
-function steerBar(cv, t, x, y, w, h, deg, range) {
-    cv.text('STEERING', x, y - 12, 22, t.dim, { font: 'bold', spacing: 1.5 });
+function steerBar(cv, t, x, y, w, h, deg, range, raw) {
+    const ls = Math.round(h * 0.34);
+    cv.text('STEERING', x, y - 12, ls, t.dim, { font: 'bold', spacing: 1.5 });
     cv.roundRect(x, y, w, h, 6, G.withAlpha('#ffffff', 0.08));
+    if (isRaw(raw)) { rawText(cv, t, x, y, w, h, raw); return; }
     const mid = x + w / 2;
     if (G.isNum(deg)) {
         const f = Math.max(-1, Math.min(1, deg / range)), dx = (-f * w) / 2;   // + (left) draws to the left
@@ -114,31 +125,50 @@ function steerBar(cv, t, x, y, w, h, deg, range) {
     }
     cv.fillRect(mid - 1.5, y - 6, 3, h + 12, t.text);
     const txt = G.isNum(deg) ? Math.abs(Math.round(deg)) + '°' + (Math.round(deg) > 0 ? ' L' : Math.round(deg) < 0 ? ' R' : '') : '--';
-    cv.text(txt, x + w, y - 12, 22, t.text, { align: 'right', font: 'bold' });
+    cv.text(txt, x + w, y - 12, ls, t.text, { align: 'right', font: 'bold' });
+}
+
+/**
+ * The page's usable width in its own units. iDrive 8's screen (2880 px) is wider than the kit's 1600 x 520 page
+ * scaled to fill the height, so the page stands in the middle with empty sides. The renderer doesn't cut drawing at
+ * the page's edge, and the recorder knows where the page lands (cv.place), so the dash uses those sides too.
+ * Anywhere else (iDrive 7, the HMI's software path, the PC preview): the page as it is. cv.span overrides (tests).
+ */
+function span(cv) {
+    if (cv.span) return cv.span;
+    const p = cv.place;
+    if (p && p.full && p.scale > 0 && p.w >= 2400) {
+        const x0 = Math.max(-400, Math.ceil(-p.ox / p.scale) + 16), x1 = Math.min(2000, Math.floor((p.w - p.ox) / p.scale) - 16);
+        if (x1 - x0 > 1600) return { x0, x1 };
+    }
+    return { x0: 16, x1: 1584 };
 }
 
 /* ---------------- pages ---------------- */
 
 function dash(cv, t, m) {
-    const top = G.TOP + 8, bottom = G.BOTTOM - 6;
-    drawMap(cv, t, { x: 16, y: top, w: 620, h: bottom - top }, m);
+    const top = G.TOP + 8, bottom = G.BOTTOM - 6, sp = span(cv), W = sp.x1 - sp.x0, gap = 16;
+    const mapW = Math.round(W * 0.42);
+    drawMap(cv, t, { x: sp.x0, y: top, w: mapW, h: bottom - top }, m);
 
-    const x0 = 652, w = (1584 - x0 - 2 * 16) / 3, h = 210;
-    const d = m.d, s = m.settings;
+    const x0 = sp.x0 + mapW + gap, rw = sp.x1 - x0, w = (rw - 2 * gap) / 3, h = 210;
+    const size = Math.round(Math.max(96, Math.min(124, w * 0.33)));
+    const d = m.d, s = m.settings, raw = m.raw || {};
     const cz = [{ from: s.coolWarn, to: 999, color: 'warn' }, { from: s.coolWarn + 8, to: 999, color: 'crit' }];
     const oz = [{ from: s.oilWarn, to: 999, color: 'warn' }, { from: s.oilWarn + 10, to: 999, color: 'crit' }];
-    G.stat(cv, t, x0, top, w, h, { label: 'Coolant', value: d.coolant, unit: '°C', size: 96, zones: cz });
-    G.stat(cv, t, x0 + w + 16, top, w, h, { label: 'Oil', value: d.oil, unit: '°C', size: 96, zones: oz });
-    G.stat(cv, t, x0 + 2 * (w + 16), top, w, h, { label: 'Speed', value: d.speed, unit: 'km/h', size: 96 });
+    G.stat(cv, t, x0, top, w, h, { label: 'Coolant', value: d.coolant, unit: '°C', size, zones: cz });
+    G.stat(cv, t, x0 + w + gap, top, w, h, { label: 'Oil', value: d.oil, unit: '°C', size, zones: oz });
+    G.stat(cv, t, x0 + 2 * (w + gap), top, w, h, { label: 'Speed', value: d.speed, unit: 'km/h', size });
 
     const py = top + h + 14, ph = bottom - py;
-    const p = G.panel(cv, t, x0, py, 1584 - x0, ph, 'Driver');
-    const bx = p.x + 24, bw = (p.w - 24 * 4) / 3, by = p.y + 92, bh = 64;
-    pctBar(cv, t, bx, by, bw, bh, 'THROTTLE', d.throttle, GREEN, m.src.throttle === 'ok' || m.demo ? '' : m.src.throttle);
+    const p = G.panel(cv, t, x0, py, rw, ph, 'Driver');
+    const bh = W > 1700 ? 76 : 64, bx = p.x + 24, bw = (p.w - 24 * 4) / 3, by = p.y + 92;
+    const thrNote = m.src.throttle === 'ok' || m.demo ? '' : m.src.throttle;
+    pctBar(cv, t, bx, by, bw, bh, 'THROTTLE', d.throttle, GREEN, thrNote, raw.throttle);
     pctBar(cv, t, bx + bw + 24, by, bw, bh, 'BRAKE', m.brakePct, RED, m.brakeNote);
-    steerBar(cv, t, bx + 2 * (bw + 24), by, bw, bh, d.steer, s.steerRange);
+    steerBar(cv, t, bx + 2 * (bw + 24), by, bw, bh, d.steer, s.steerRange, raw.steer);
     const g = (v) => (G.isNum(v) ? (v >= 0 ? '+' : '') + v.toFixed(2) : '--');
-    cv.text('g long ' + g(d.gLong) + '    g lat ' + g(d.gLat), bx, by + bh + 44, 22, t.dim);
+    cv.text('g long ' + g(d.gLong) + '    g lat ' + g(d.gLat), bx, by + bh + 44, W > 1700 ? 28 : 22, t.dim);
 }
 
 function tracks(cv, t, m, act) {
@@ -184,4 +214,4 @@ function toast(cv, t, msg) {
     cv.text(msg, 800, y + 35, 26, t.text, { align: 'center' });
 }
 
-module.exports = { dash, tracks, toast, GREEN, RED };
+module.exports = { dash, tracks, toast, span, GREEN, RED };

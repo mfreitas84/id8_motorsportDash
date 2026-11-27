@@ -6,7 +6,8 @@
  *   Normal  the kit's small app log, data/<id>.log (two files of 256 KB at most), as every kit app has.
  *   Debug   that, plus data/debug/<YYYYMMDD-HHMMSS>.log with what is needed to make sense of a car:
  *             - at start: app, version, settings, every SOME/IP source and its state
- *             - every second: the RAW value of every field, exactly as the car sent it (no scaling)
+ *             - the RAW value of every field, unscaled, one line per field: when it changes (checked once a
+ *               second) or every 30 s; checksum / counter members left out; long records in numbered parts
  *             - every 5 s: the app's counters (polls, errors, rates, ages ...)
  *             - events: screen shown / hidden, buttons, settings, recording, errors with stack
  *           2 MB a file at most, the newest 5 files kept. Switches itself back to Normal after 2 hours
@@ -33,6 +34,7 @@ const MAX_BYTES = 2 * 1024 * 1024;
 const KEEP_FILES = 5;
 const AUTO_OFF_MS = 2 * 60 * 60 * 1000;
 const RAW_MS = 1000, STATS_MS = 5000;
+const RAW_REPEAT_MS = 30000, LONG_MS = 10000, RAW_CHUNK = 220;   // raw lines: see _flushRaw
 
 class Debug {
     constructor(ctx) {
@@ -43,7 +45,7 @@ class Debug {
         this.dir = ctx.dataDir ? path.join(ctx.dataDir, 'debug') : null;
         this.on = false;
         this.file = null; this.bytes = 0;
-        this.rawLast = {}; this.rawChanged = {};
+        this.rawLast = {}; this.rawChanged = {}; this.rawWritten = {};
         this.statFns = [];
         this.timers = [];
         this.mode = null;
@@ -135,6 +137,7 @@ class Debug {
     /** Delete every debug file (Settings > Delete debug logs). While Debug is on, a fresh file starts. */
     clear() {
         const n = this.usage().files;
+        this.queue = [];                 // lines still to write would bring a deleted file back
         try { fs.readdirSync(this.dir).filter((f) => f.endsWith('.log')).forEach((f) => { try { fs.unlinkSync(path.join(this.dir, f)); } catch (e) { /* gone */ } }); } catch (e) { /* none */ }
         this.file = null;
         if (this.on) { this._open(); this._write('DEBUG', 'logs deleted (' + n + ' file(s)), new file'); }
@@ -190,20 +193,44 @@ class Debug {
         const line = new Date().toISOString() + ' ' + tag + ' ' + msg + '\n';
         if (this.bytes + line.length > MAX_BYTES) this._open();
         this.bytes += line.length;
-        fs.appendFile(this.file, line, () => {});
+        // one append at a time, in order (separate appendFile calls can land out of order)
+        const q = this.queue || (this.queue = []);
+        if (q.length && q[q.length - 1].f === this.file) q[q.length - 1].s += line; else q.push({ f: this.file, s: line });
+        this._drain();
+    }
+
+    _drain() {
+        if (this.writing || !this.queue || !this.queue.length) return;
+        const job = this.queue.shift();
+        this.writing = true;
+        fs.appendFile(job.f, job.s, () => { this.writing = false; this._drain(); });
     }
 
     _writeSync(tag, msg) {
         try { fs.appendFileSync(this.file, new Date().toISOString() + ' ' + tag + ' ' + msg + '\n'); } catch (e) { /* nothing */ }
     }
 
+    /**
+     * Raw values: one line per signal, so the QR log (which cuts a line at 300 characters) keeps them whole.
+     * A signal is written when it changed, else every RAW_REPEAT_MS; its checksum / message counter (cRC..., alive...)
+     * are left out (they change every message and hide the values). A record too long for one line goes out in parts,
+     * "RAW <name> [i/n] <text>" (join the parts in order), at most every LONG_MS.
+     */
     _flushRaw() {
-        const names = Object.keys(this.rawChanged);
-        if (!names.length) return;
-        const out = {};
-        names.forEach((n) => { out[n] = this.rawLast[n]; });
+        const now = Date.now();
+        Object.keys(this.rawChanged).forEach((n) => {
+            const text = fmt(quiet(this.rawLast[n]));
+            const last = this.rawWritten[n];
+            const long = text.length > RAW_CHUNK;
+            if (last && last.text === text && now - last.t < RAW_REPEAT_MS) return;
+            if (last && long && now - last.t < LONG_MS) return;
+            this.rawWritten[n] = { text, t: now };
+            if (!long) { this._write('RAW', n + ' ' + text); return; }
+            const parts = [];
+            for (let i = 0; i < text.length; i += RAW_CHUNK) parts.push(text.slice(i, i + RAW_CHUNK));
+            parts.forEach((x, i) => this._write('RAW', n + ' [' + (i + 1) + '/' + parts.length + '] ' + x));
+        });
         this.rawChanged = {};
-        this._write('RAW', fmt(out));
     }
 
     _flushStats() {
@@ -218,6 +245,7 @@ class Debug {
     }
 
     _deleteLogs() {
+        this.queue = [];
         const gone = [];
         const rm = (f) => { try { fs.unlinkSync(f); gone.push(path.basename(f)); } catch (e) { /* not there */ } };
         if (this.dir) {
@@ -228,6 +256,14 @@ class Debug {
         this.file = null;
         this.ctx.log.info('logging off: deleted ' + (gone.length ? gone.join(', ') : 'nothing'));
     }
+}
+
+/** A record without its per-message checksum and counter fields (any depth). */
+function quiet(x) {
+    if (!x || typeof x !== 'object' || Array.isArray(x) || Buffer.isBuffer(x)) return x;
+    const out = {};
+    Object.keys(x).forEach((k) => { if (!/^(crc|alive)/i.test(k)) out[k] = quiet(x[k]); });
+    return out;
 }
 
 /** Compact, safe text for a value: Buffers as hex, long arrays cut. */
