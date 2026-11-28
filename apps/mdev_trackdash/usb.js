@@ -26,22 +26,25 @@ const FOLDER = 'M2_logs';
  * mode (fchmod), and on the stick (FAT mounted for uid 2010) only that uid may: the app (uid 12201)
  * gets EPERM even though it may write. Seen on the G87, trackdash 0.1.8.
  */
+// The car's Node is old: no fs.promises (0.1.9 failed with "Cannot read property 'open' of undefined").
+// Plain callback fs only, wrapped here.
+const call = (fn, ...a) => new Promise((ok, no) => fn(...a, (e, r) => (e ? no(e) : ok(r))));
 async function copyPlain(from, to) {
-    const src = await fs.promises.open(from, 'r');
+    const src = await call(fs.open, from, 'r');
     let dst = null;
     try {
-        dst = await fs.promises.open(to, 'w');
+        dst = await call(fs.open, to, 'w');
         const buf = Buffer.alloc(256 * 1024);
         for (;;) {
-            const { bytesRead } = await src.read(buf, 0, buf.length, null);
-            if (!bytesRead) break;
+            const got = await call(fs.read, src, buf, 0, buf.length, null);
+            if (!got) break;
             let off = 0;
-            while (off < bytesRead) off += (await dst.write(buf, off, bytesRead - off)).bytesWritten;
+            while (off < got) off += await call(fs.write, dst, buf, off, got - off, null);
         }
-        await dst.sync();
+        await call(fs.fsync, dst);
     } finally {
-        await src.close();
-        if (dst) await dst.close();
+        await call(fs.close, src).catch(() => {});
+        if (dst !== null) await call(fs.close, dst).catch(() => {});
     }
 }
 

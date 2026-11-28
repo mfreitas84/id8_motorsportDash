@@ -151,21 +151,23 @@ test('usb.js save: asks, waits for read-write, copies the logs, skips the one re
     stop();
 });
 
-test('usb.js save: never uses copyFile (it sets the mode: EPERM on the car\'s FAT stick)', async () => {
+test('usb.js save: Node 8 fs only - no copyFile (EPERM on the car\'s FAT stick), no fs.promises', async () => {
     const dir = tmp(), shm = path.join(dir, 'shm'), stick = path.join(dir, 'stick'), logs = path.join(dir, 'logs');
     fs.mkdirSync(stick); fs.mkdirSync(logs);
     const big = Buffer.alloc(700 * 1024, 7);                       // more than one 256 KB chunk
     fs.writeFileSync(path.join(logs, 'big.csv'), big);
     const eperm = () => { const e = new Error('EPERM: operation not permitted, copyfile'); e.code = 'EPERM'; throw e; };
-    const saved = [fs.copyFileSync, fs.copyFile, fs.promises.copyFile];
-    fs.copyFileSync = eperm; fs.copyFile = eperm; fs.promises.copyFile = eperm;
+    const saved = [fs.copyFileSync, fs.copyFile], promises = Object.getOwnPropertyDescriptor(fs, 'promises');
+    fs.copyFileSync = eperm; fs.copyFile = eperm;
+    Object.defineProperty(fs, 'promises', { value: undefined, configurable: true, enumerable: true });
     const stop = fakeHelper(shm, stick);
     try {
         const r = await new UsbBridge(log, { shm, tick: 50 }).save(logs);
         assert.strictEqual(r.copied, 1);
         assert.ok(fs.readFileSync(path.join(stick, FOLDER, 'big.csv')).equals(big));
     } finally {
-        [fs.copyFileSync, fs.copyFile, fs.promises.copyFile] = saved;
+        [fs.copyFileSync, fs.copyFile] = saved;
+        Object.defineProperty(fs, 'promises', promises);
         stop();
     }
 });
