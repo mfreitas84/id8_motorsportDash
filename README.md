@@ -7,7 +7,7 @@ Custom apps for the BMW MGU head unit (iDrive 8), built on the
 | App | What | State |
 |---|---|---|
 | [`mdev_quickstart`](apps/mdev_quickstart) | Plumbing check: live rpm, coolant, oil temperature and speed (polled SOME/IP getters), plus one gated OBD read (intake air temperature from the DME) | v0.1.0, to verify on the car |
-| [`mdev_trackdash`](apps/mdev_trackdash) | Track day: track map with the car's position (record a track once, reuse it), coolant / oil / speed, throttle / brake / steering bars, CSV session log with GPS; Save USB (parked only) | v0.1.0. **GPS source and USB helper still to wire** (see below) |
+| [`mdev_trackdash`](apps/mdev_trackdash) | Track day: track map with the car's position (record a track once, reuse it), coolant / oil / speed, throttle / brake / steering bars, CSV session log with GPS; Save USB (parked only) | v0.1.0. **GPS position source still to find** (see below) |
 
 The project brief (hardware, data paths, safety rule, roadmap) is [CLAUDE.md](CLAUDE.md).
 
@@ -153,9 +153,15 @@ moves with the engine running. The CSV logs `throttle_raw`, `steer_raw` and `ste
 
 **Wide screen:** on iDrive 8 the dash also uses the screen's sides (the kit's page is narrower than the screen).
 
-**Not wired yet:**
-- **Save USB.** Sticks are mounted read-only, so it needs a small root helper (a Store tool). That
-  needs one SSH look at how sticks mount first. Until then the button says why it can't run.
+**Save USB** (needs the Store tool **mdev USB helper**, from this same source):
+- The car mounts USB sticks read-only (G87: `/dev/sda1` FAT on `/media/<label>`, `ro`, open permissions).
+  An app can't change that, so the tool [`tools/mdev-usb`](tools/mdev-usb) runs a small root `sh` script.
+  It makes the stick writable **only while Track Dash asks** (a time stamp in `/dev/shm/mdev-usb/request`,
+  rewritten every second while copying), then `sync` and read-only again about 10 s later. It touches only
+  FAT / exFAT mounts directly under `/media`, and only a stick it made writable itself.
+- SAVE USB works only when parked (standing still, engine off). It copies every session CSV to
+  `<stick>/M2_logs/` (a file already there with the same size is skipped; the one still recording is left out).
+- Without the tool the button says "install mdev USB helper from the Store".
 
 **What to check on the car (v0.1.0):**
 

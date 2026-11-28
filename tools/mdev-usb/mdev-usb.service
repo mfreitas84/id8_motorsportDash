@@ -1,0 +1,12 @@
+[Unit]
+Description=mdev USB helper: makes the USB stick writable while Track Dash copies its logs to it
+
+[Service]
+# root on purpose: only root can remount the stick. It touches only vfat / exfat mounts under /media,
+# and only while an app keeps /dev/shm/mdev-usb/request fresh (usb-helper.sh). No internet.
+ExecStart=/bin/sh /var/opt/mdev-usb/current/usb-helper.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

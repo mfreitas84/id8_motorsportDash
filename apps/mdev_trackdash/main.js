@@ -87,9 +87,12 @@ mgu.run({
                 const u = usb.status();
                 if (!u.present) return toast('Save USB: ' + (u.why || 'no USB stick'));
                 if (!parked()) return toast('Save USB: only while parked (engine off, standing still)');
-                const f = logger.latest();
-                if (!f) return toast('Save USB: no log yet');
-                return usb.save(f).then((dst) => toast('Saved to USB: ' + dst)).catch((e) => toast('Save USB: ' + e.message));
+                toast('Save USB: copying to ' + (u.label || 'the stick') + '...');
+                const skip = logger.on && logger.file ? require('path').basename(logger.file) : null;   // still recording
+                return usb.save(logger.dir, skip)
+                    .then((r) => toast(r.copied ? 'Saved ' + r.copied + ' log' + (r.copied > 1 ? 's' : '') + ' to ' + r.dst
+                        : 'USB: all ' + r.total + ' logs already on ' + r.dst))
+                    .catch((e) => toast('Save USB: ' + e.message));
             },
             select: (id) => { selId = id; },
             saveLap: () => {

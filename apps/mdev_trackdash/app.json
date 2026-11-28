@@ -2,7 +2,7 @@
   "id": "mdev_trackdash",
   "title": "Track Dash",
   "description": "Track map with the car's position, coolant / oil / speed, throttle, brake and steering, and a CSV session log",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "vendor": "mdev",
   "loggingId": "MD02",
   "iconGlyph": "flag",

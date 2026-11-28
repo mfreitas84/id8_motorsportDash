@@ -1,0 +1,20 @@
+{
+  "id": "mdev-usb",
+  "kind": "tool",
+  "version": "0.1.0",
+  "title": "mdev USB helper",
+  "description": "Lets Track Dash copy its session logs to a USB stick: the car mounts sticks read-only, and this small root helper makes the stick writable only while the app copies, then read-only again",
+  "optional": true,
+  "uninstallable": true,
+  "mguHmi": ["ID8"],
+  "files": [
+    { "path": "usb-helper.sh", "from": "usb-helper.sh", "mode": "0755" }
+  ],
+  "units": [
+    { "name": "mdev-usb.service", "from": "mdev-usb.service" }
+  ],
+  "enable": [
+    { "unit": "mdev-usb.service", "target": "multi-user.target" }
+  ],
+  "restart": ["mdev-usb.service"]
+}

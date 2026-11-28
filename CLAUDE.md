@@ -83,9 +83,9 @@ Glanceable while driving. Priorities for track engine survival:
 - Capture all polled SOME/IP signals + the OBD PID set to **CSV** (timestamp + columns), ~10 Hz
   (SOME/IP) with OBD at its slower round-trip rate; one row per sample, ISO-8601 or ms epoch.
 - Auto-start when car moving / screen open; flush periodically; close file cleanly on hide/shutdown.
-- **OPEN QUESTION — verify on-device:** where USB mounts on this unit (e.g. /media/...). The Drive
-  Recorder app writes media, so a path exists — inspect a mounted stick over SSH before coding the writer.
-  Fallback: log to app dataDir, copy to USB on request.
+- **ANSWERED (G87, 2026-11-28, SSH):** a stick mounts as `/dev/sda1 on /media/<label> type vfat (ro,...,uid=2010,
+  fmask=0000,dmask=0000,uhelper=udisks2)`. Root can `mount -o remount,rw` it; with fmask 0000 the app (uid 12201)
+  can then write. Apps run as uid 12201, one gid per app; `/dev/shm` is 1777.
 
 ## Build / deploy loop (Windows or macOS; `python3` on macOS)
 1. Edit `apps/<id>/app.json` / `main.js`. 2. `node tests/test_quickstart.js`.
@@ -148,7 +148,8 @@ Fresh, minimal, heavily-commented app that proves the plumbing end to end — NO
 - Track line: **record once, reuse** — saved line when GPS detects a known track, live trail otherwise,
   "Save lap as track" after one closed lap. Tracks in `data/tracks.json`, CanBusTrackAnalyser format + `line`.
 - Header menu: Dash · Tracks · Rec log · Save USB. Log = CSV per session in `data/logs/`, 10 Hz, incl. GPS.
-- Save USB: stick present AND parked (speed < 1, rpm < 50, fresh). Needs the root remount helper (todo).
+- Save USB: stick present AND parked (speed < 1, rpm < 50, fresh). Root helper = Store tool `tools/mdev-usb`
+  (own code, not usb-rw.sh): rw only while `/dev/shm/mdev-usb/request` is fresh; the parked rule is in the app.
 - GPS from `GPSData.GPSPositionExtendedCAN` at 1 Hz (`gps.js`, see Open questions). Open: whether it has
   lat/lon (debug log from the car), brake intensity (car gives only on/off:
   DSC `StabilizationManagement.statusBrakingDriver`; bar uses deceleration), whether pedal / steering
