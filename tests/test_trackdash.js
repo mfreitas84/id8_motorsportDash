@@ -176,10 +176,13 @@ test('raw -> real: rpm, speed, temps, g, yaw, throttle, steering, invalid values
     assert.strictEqual(SC.oil({ temperatureEngineOilDrive: 255 }), null);
     assert.ok(Math.abs(SC.gLong({ longitudinalAccelerationCentreOfGravity: 32500 })) < 1e-9);     // 0 m/s^2
     assert.ok(Math.abs(SC.yaw({ yawVelocityVehicle: 32768 })) < 1e-9);                            // 0 deg/s
-    assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 4000 }), 100);
-    assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 4089 }), 100);            // G87 full pedal / kickdown (102 %)
-    assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 0 }), 0);
-    assert.strictEqual(SC.throttle({ actualValueAngleAcceleratorPedal: 5000 }), null);           // 125 %: no data
+    // G87: 12 bits, nibbles out of order (logs 2026-11-28): 250 = 0x0FA -> 0xFA0 = 4000 = floored
+    const thr = (r) => SC.throttle({ actualValueAngleAcceleratorPedal: r });
+    assert.strictEqual(thr(250), 100);
+    assert.strictEqual(thr(4089), 99.975);                                                        // 0xFF9 -> 0xF9F = 3999
+    assert.strictEqual(thr(0), 0);
+    assert.deepStrictEqual([1307, 289, 3617, 1567, 1818, 3863].map((r) => Math.round(thr(r))), [11, 13, 14, 13, 11, 10]);   // one smooth blip
+    assert.strictEqual(thr(5000), null);                                                          // not 12 bits: no data
     // values from the G87 (lock-to-lock, parked): centre 32744, full left 41591, full right 23989
     assert.ok(Math.abs(SC.steer({ actualValueSteeringAngleDriver: 32744 })) < 1.1, 'centre');
     assert.ok(SC.steer({ actualValueSteeringAngleDriver: 41591 }) > 380, 'full left: + about 388 deg');

@@ -48,10 +48,13 @@ const G0 = 9.80665;
 //    message has it as is; the CRC message ("ActualSteeringAngleDriver") has the same number with its two bytes
 //    swapped (0x7FE8 -> 0xE87F), which is what made the bar jump side to side.
 //  - brake: statusBrakingDriver 16 = released, 23 = pressed (low three bits set).
-//  - throttle (engine running, video of 0-100 sweeps): raw 0 released ... 4089 floored (kickdown), so 0.025 % a
-//    count is right; the old limit of 102 % threw full pedal away. Over 100 % = kickdown, shown as 100.
+//  - throttle: a 12-bit value that the getter hands over with its nibbles in the wrong order: real =
+//    (raw & 0xFF) << 4 | raw >> 8 (CSV logs 2026-11-28: raw 250 = 0x0FA -> 0xFA0 = 4000 = floored; raw 1307 /
+//    289 / 3617 = 437 / 529 / 542, a smooth blip that follows the rpm). 0.025 % a count: 4000 = 100 %.
+//    Read as is, the bar jumped up and down while the pedal moved slowly ("like y = sin").
 const CALIBRATED = { throttle: true, steer: true };
 const swap16 = (r) => ((r & 0xff) << 8) | ((r >> 8) & 0xff);
+const nib12 = (r) => (r === null || r < 0 || r > 0xfff ? null : ((r & 0xff) << 4) | (r >> 8));
 const steerDeg = (r) => {
     if (r === null || r === 65535) return null;
     const d = (r - 32768) * 0.04395;
@@ -66,7 +69,7 @@ const SC = {
     gLong: (v) => { const a = lin(v && v.longitudinalAccelerationCentreOfGravity, 0.002, -65, 65535); return a === null ? null : a / G0; },
     gLat: (v) => { const a = lin(v && v.lateralAccelerationCentreOfGravity, 0.002, -65, 65535); return a === null ? null : a / G0; },
     yaw: (v) => lin(v && v.yawVelocityVehicle, 0.005, -163.84, 65535),
-    throttle: (v) => { const p = lin(v && v.actualValueAngleAcceleratorPedal, 0.025, 0, 65535); return p === null || p < -2 || p > 110 ? null : Math.max(0, Math.min(100, p)); },
+    throttle: (v) => { const r = nib12(num(v && v.actualValueAngleAcceleratorPedal)); return r === null ? null : Math.max(0, Math.min(100, r / 40)); },   // 0.025 % a count
     // steering, the NoCRC message: offset binary, + = left
     steer: (v) => steerDeg(num(v && v.actualValueSteeringAngleDriver)),
     // the CRC message: the same, bytes swapped
