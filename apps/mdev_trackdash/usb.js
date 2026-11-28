@@ -21,6 +21,30 @@ const STALE_S = 10;            // a status older than this: the helper is not ru
 const WAIT_RW_MS = 15000;      // how long save() waits for the stick to become writable
 const FOLDER = 'M2_logs';
 
+/**
+ * Copies by reading and writing, then fsync. NOT fs.copyFile: Node's copyfile also sets the file
+ * mode (fchmod), and on the stick (FAT mounted for uid 2010) only that uid may: the app (uid 12201)
+ * gets EPERM even though it may write. Seen on the G87, trackdash 0.1.8.
+ */
+async function copyPlain(from, to) {
+    const src = await fs.promises.open(from, 'r');
+    let dst = null;
+    try {
+        dst = await fs.promises.open(to, 'w');
+        const buf = Buffer.alloc(256 * 1024);
+        for (;;) {
+            const { bytesRead } = await src.read(buf, 0, buf.length, null);
+            if (!bytesRead) break;
+            let off = 0;
+            while (off < bytesRead) off += (await dst.write(buf, off, bytesRead - off)).bytesWritten;
+        }
+        await dst.sync();
+    } finally {
+        await src.close();
+        if (dst) await dst.close();
+    }
+}
+
 class UsbBridge {
     constructor(log, opts) {
         const o = opts || {};
@@ -80,19 +104,18 @@ class UsbBridge {
         this._ask();
         const keep = setInterval(() => this._ask(), this.tick);
         const done = () => { clearInterval(keep); this._letGo(); this.busy = false; };
-        return this._waitRw().then((s) => {
+        return this._waitRw().then(async (s) => {
             const dst = path.join(s.mount, FOLDER);
             if (!fs.existsSync(dst)) fs.mkdirSync(dst);
             let copied = 0;
-            names.forEach((n) => {
+            for (const n of names) {
                 const from = path.join(dir, n), to = path.join(dst, n);
                 let same = false;
                 try { same = fs.statSync(to).size === fs.statSync(from).size; } catch (e) { /* not there */ }
-                if (same) return;
-                fs.copyFileSync(from, to);
-                const fd = fs.openSync(to, 'r+'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+                if (same) continue;
+                await copyPlain(from, to);
                 copied++;
-            });
+            }
             done();
             this.log.info('usb: ' + copied + ' of ' + names.length + ' logs copied to ' + dst);
             return { copied, total: names.length, dst: (s.label || 'USB') + '/' + FOLDER };
